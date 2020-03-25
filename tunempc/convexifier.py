@@ -31,7 +31,7 @@ import numpy as np
 import tunempc.mtools as mtools
 from functools import reduce
 import tunempc.preprocessing as preprocessing
-import logging
+from tunempc.logger import Logger
 
 def convexify(A, B, Q, R, N, C = None, opts = {'rho':1e-3, 'solver':'mosek','force': False}):
 
@@ -60,17 +60,16 @@ def convexify(A, B, Q, R, N, C = None, opts = {'rho':1e-3, 'solver':'mosek','for
     arg = {**locals()}
     del arg['opts']
 
-    logging.info(50*'=')
+    # extract steady-state period
+    period = len(arg['A'])
+    
+    Logger.logger.info('Convexify Hessians along {:d}-periodic steady state trajectory.'.format(period))
 
     if arg['C'] is None:
         del arg['C']
-        logging.info('Convexifier called w/o active constraints at steady state')
+        Logger.logger.info('Convexifier called w/o active constraints at steady state')
 
     arg = preprocessing.input_checks(arg)
-
-    # extract steady-state period
-    period = len(arg['A'])
-    logging.info('Convexify along {:d}-periodic steady state trajectory.'.format(period))
 
     # extract dimensions
     nx = arg['A'][0].shape[0]
@@ -79,17 +78,18 @@ def convexify(A, B, Q, R, N, C = None, opts = {'rho':1e-3, 'solver':'mosek','for
     # check if hessian is already convex!
     min_eigval = list(map(lambda q,r,n: np.min(np.linalg.eigvals(mtools.buildHessian(q,r,n))), arg['Q'], arg['R'], arg['N']))
     if min(min_eigval) > 0:
-        logging.info('Provided hessian(s) are already positive definite. No convexification needed!')
+        Logger.logger.info('Provided hessian(s) are already positive definite. No convexification needed!')
         return  np.zeros((nx+nu,nx+nu)), np.zeros((nx,nx)), np.zeros((nu,nu)), np.zeros((nx,nu))
 
     # solver verbosity
-    if logging.getLogger().getEffectiveLevel() < 20:
+    if Logger.logger.getEffectiveLevel() < 20:
         opts['verbose'] = 1
     else:
         opts['verbose'] = 0
 
-    logging.info('Construct SDP...')
-    logging.info(50*'*')
+    Logger.logger.info('Construct SDP...')
+    Logger.logger.info('')
+    Logger.logger.info(50*'*')
 
     # perform autoscaling
     scaling = autoScaling(arg['Q'], arg['R'], arg['N'])
@@ -97,7 +97,7 @@ def convexify(A, B, Q, R, N, C = None, opts = {'rho':1e-3, 'solver':'mosek','for
     # define model
     M = setUpModelPicos(**arg, constr = False)
 
-    logging.info('Step 1: (\u03B7_F = 0), (\u03B7_T = 0)')
+    Logger.logger.info('Step 1: (\u03B7_F = 0), (\u03B7_T = 0)')
 
     # solve
     constraint_contribution = False
@@ -105,17 +105,17 @@ def convexify(A, B, Q, R, N, C = None, opts = {'rho':1e-3, 'solver':'mosek','for
 
     if M.status == 'optimal':
 
-        logging.info('Optimal solution found.')
-        logging.info('Maximum condition number: {}'.format(scaling['beta']*M.variables['beta'].value))
-        logging.info('Smallest eigenvalue: {}'.format(1/(scaling['alpha']*M.variables['alpha'].value)))
-        logging.info('EQUIVALENCE TYPE A')
-        logging.info(50*'*')
+        Logger.logger.info('Optimal solution found.')
+        Logger.logger.info('Maximum condition number: {}'.format(scaling['beta']*M.variables['beta'].value))
+        Logger.logger.info('Smallest eigenvalue: {}'.format(1/(scaling['alpha']*M.variables['alpha'].value)))
+        Logger.logger.info('EQUIVALENCE TYPE A')
+        Logger.logger.info(50*'*')
 
     if M.status != 'optimal' and 'C' in arg:
         
-        logging.info('!! Problem infeasible !!')
-        logging.info(50*'*')
-        logging.info('Step 2: (\u03B7_F = 1), (\u03B7_T = 0)')
+        Logger.logger.info('!! Problem infeasible !!')
+        Logger.logger.info(50*'*')
+        Logger.logger.info('Step 2: (\u03B7_F = 1), (\u03B7_T = 0)')
 
         # create model with active constraint regularisation
         M = setUpModelPicos(**arg, rho = opts['rho'], constr = True)
@@ -126,31 +126,31 @@ def convexify(A, B, Q, R, N, C = None, opts = {'rho':1e-3, 'solver':'mosek','for
 
         if M.status == 'optimal':
 
-            logging.info('Optimal solution found.')
-            logging.info('Maximum condition number: {}'.format(scaling['beta']*M.variables['beta'].value))
-            logging.info('Smallest eigenvalue: {}'.format(1/(scaling['alpha']*M.variables['alpha'].value)))
-            logging.info('EQUIVALENCE TYPE B')
-            logging.info(50*'*')
+            Logger.logger.info('Optimal solution found.')
+            Logger.logger.info('Maximum condition number: {}'.format(scaling['beta']*M.variables['beta'].value))
+            Logger.logger.info('Smallest eigenvalue: {}'.format(1/(scaling['alpha']*M.variables['alpha'].value)))
+            Logger.logger.info('EQUIVALENCE TYPE B')
+            Logger.logger.info(50*'*')
 
     if M.status != 'optimal':
 
-        logging.warning('!! Problem infeasible !!')
-        logging.warning('!! Strict dissipativity does not hold locally !!')
-        logging.warning('!! The provided indefinite LQ MPC problem is not stabilising !!')
-        logging.warning(50*'*')
+        Logger.logger.warning('!! Problem infeasible !!')
+        Logger.logger.warning('!! Strict dissipativity does not hold locally !!')
+        Logger.logger.warning('!! The provided indefinite LQ MPC problem is not stabilising !!')
+        Logger.logger.warning(50*'*')
 
         if opts['force']:
 
-            logging.info('Step 3: (\u03B7_F = 1), (\u03B7_T = 1)')
-            logging.info('Enforcing convexification...')
+            Logger.logger.info('Step 3: (\u03B7_F = 1), (\u03B7_T = 1)')
+            Logger.logger.info('Enforcing convexification...')
             raise ValueError('Step 3 not implemented yet.')
-            logging.warning(50*'*')
+            Logger.logger.warning(50*'*')
 
         else:
 
-            logging.warning('Consider operating the system at another orbit of different period p')
-            logging.warning('Convexification and stabilization of the MPC scheme can be enforced by enabling "force"-flag.')
-            logging.warning('In this case there are no guarantees of (local, first-order) equivalence.')
+            Logger.logger.warning('Consider operating the system at another orbit of different period p')
+            Logger.logger.warning('Convexification and stabilization of the MPC scheme can be enforced by enabling "force"-flag.')
+            Logger.logger.warning('In this case there are no guarantees of (local, first-order) equivalence.')
             raise ValueError('Convexification is not possible if the system is not optimally operated at the optimal orbit.')
 
     # build convex hessian list
@@ -166,6 +166,10 @@ def convexify(A, B, Q, R, N, C = None, opts = {'rho':1e-3, 'solver':'mosek','for
 
     # check
     assert 1/M.variables['alpha'].value > 0, 'convexified hessian(s) should be positive definite'
+
+    Logger.logger.info('')
+    Logger.logger.info('Hessians convexified.')
+    Logger.logger.info('')
 
     return dHc, dQc, dRc, dNc
 
@@ -323,16 +327,16 @@ def convexHessianExprPicos(Q, R, N, A, B, dP, alpha, scaling, index, C = None, F
 
 def solveSDP(M, opts):
 
-    logging.info('solving SDP...')
+    Logger.logger.info('solving SDP...')
 
     M.solve(solver = opts['solver'], verbose = opts['verbose'])
 
     if M.status == 'optimal':
-        logging.debug('SDP solution:')
-        logging.debug('alpha: {}'.format(str(M.variables['alpha'].value)))
-        logging.debug('beta: {}'.format(str((M.variables['beta'].value))))
+        Logger.logger.debug('SDP solution:')
+        Logger.logger.debug('alpha: {}'.format(str(M.variables['alpha'].value)))
+        Logger.logger.debug('beta: {}'.format(str((M.variables['beta'].value))))
     else:
-        logging.debug('solution status: {} ...'.format(M.status))
+        Logger.logger.debug('solution status: {} ...'.format(M.status))
 
     return M
 

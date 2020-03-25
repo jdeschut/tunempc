@@ -30,6 +30,7 @@ import casadi.tools as ct
 import itertools
 import numpy as np
 import collections
+from tunempc.logger import Logger
 
 def input_formatting(sys):
 

@@ -24,12 +24,17 @@
 """
 
 import matplotlib.pyplot as plt
-import logging
+from tunempc.logger import Logger
 
 def check_equivalence(controllers, cost, h, x0, dx, alpha):
 
     """ Check local equivalence of different controllers.
     """
+
+    Logger.logger.info(60*'=')
+    Logger.logger.info(15*' '+'Compare feedback policies...')
+    Logger.logger.info(60*'=')
+    Logger.logger.info('')
 
     log = []
 
@@ -63,13 +68,18 @@ def closed_loop_sim(controllers, cost, h, F, x0, N):
     """ Perform closed-loop simulations for different controllers starting from x0
     """
 
+    Logger.logger.info(60*'=')
+    Logger.logger.info(10*' '+'Compute closed-loop responses...')
+    Logger.logger.info(60*'=')
+    Logger.logger.info('')
+
     log = initialize_log(controllers, x0)
 
     for i in range(N):
 
-        logging.info('======================================')
-        logging.info('Closed-loop simulation step {} of {}'.format(i, N))
-        logging.info('======================================')
+        Logger.logger.info('======================================')
+        Logger.logger.info('Closed-loop simulation step {} of {}'.format(i, N))
+        Logger.logger.info('======================================')
 
         for name in list(controllers.keys()):
 

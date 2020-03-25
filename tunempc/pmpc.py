@@ -31,7 +31,7 @@ import numpy as np
 import itertools
 import collections
 import tunempc.sqp_method as sqp_method
-import logging
+from tunempc.logger import Logger
 
 class Pmpc(object):
 
@@ -95,7 +95,7 @@ class Pmpc(object):
 
             if self.__options['hessian_approximation'] == 'gauss_newton':
                 self.__options['hessian_approximation'] = 'exact'
-                logging.warning('Gauss-Newton Hessian approximation cannot be applied for economic MPC problem. Switched to exact Hessian.')
+                Logger.logger.warning('Gauss-Newton Hessian approximation cannot be applied for economic MPC problem. Switched to exact Hessian.')
 
         else:
 
@@ -330,6 +330,10 @@ class Pmpc(object):
         # create IPOPT-solver instance if needed
         if self.__options['ipopt_presolve']:
             opts = {'ipopt':{'linear_solver':'ma57','print_level':0},'expand':False}
+            if Logger.logger.getEffectiveLevel() > 10:
+                opts['ipopt']['print_level'] = 0
+                opts['print_time'] = 0
+                opts['ipopt']['sb'] = 'yes'
             self.__solver = ca.nlpsol('solver', 'ipopt', prob, opts)
 
         # create hessian approximation function

@@ -31,6 +31,7 @@ import numpy as np
 import itertools
 import collections
 import tunempc.sqp_method as sqp_method
+from tunempc.logger import Logger
 
 class Pocp(object):
 
@@ -165,6 +166,11 @@ class Pocp(object):
         # create IP-solver
         prob = {'f': f, 'g': self.__g, 'x': w, 'p': p}
         opts = {'ipopt':{'linear_solver':'ma57'},'expand':False}
+        if Logger.logger.getEffectiveLevel() > 10:
+            opts['ipopt']['print_level'] = 0
+            opts['print_time'] = 0
+            opts['ipopt']['sb'] = 'yes'
+
         self.__solver = ca.nlpsol('solver', 'ipopt', prob, opts)
 
         # create SQP-solver
@@ -194,6 +200,7 @@ class Pocp(object):
             )
 
         # solve OCP
+        Logger.logger.info('IPOPT pre-solve...')
         self.__sol = self.__solver(
             x0  = w0, 
             lbx = self.__lbw, 
@@ -214,6 +221,7 @@ class Pocp(object):
                     self.__x0star
                 )
             # solve
+            Logger.logger.info('IPOPT pre-solve with phase-fix...')
             self.__sol = self.__solver(
                 x0  = self.__sol['x'],
                 lbx = self.__lbw,
@@ -224,6 +232,7 @@ class Pocp(object):
            )
 
         # solve with SQP (with active set QP solver) to retrieve active set
+        Logger.logger.info('Solve with active-set based SQP method...')
         self.__sol = self.__sqp_solver.solve(self.__sol['x'], p, self.__sol['lam_g'])
 
         return self.__w(self.__sol['x'])

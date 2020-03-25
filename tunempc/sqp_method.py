@@ -31,7 +31,7 @@ import casadi as ca
 import numpy as np
 from scipy.linalg import eig
 from scipy.linalg import null_space
-import logging
+from tunempc.logger import Logger
 
 class Sqp(object):
 
@@ -262,8 +262,8 @@ class Sqp(object):
 
         # print stats
         if k%10 == 0:
-            logging.info('iter\tf\t\tstep\t\tinf_du\t\tinf_pr\t\talpha\t\treg')
-        logging.info('{:3d}\t{:.4e}\t{:.4e}\t{:.4e}\t{:.4e}\t{:.2e}\t{:.2e}'.format(
+            Logger.logger.debug('iter\tf\t\tstep\t\tinf_du\t\tinf_pr\t\talpha\t\treg')
+        Logger.logger.debug('{:3d}\t{:.4e}\t{:.4e}\t{:.4e}\t{:.4e}\t{:.2e}\t{:.2e}'.format(
             k,
             self.__ls_filter[-1,0],
             np.linalg.norm(dw),
@@ -277,10 +277,10 @@ class Sqp(object):
             dual_infeas < self.__options['tol']):
             converged = True
             if k != 0:
-                logging.info('Optimal solution found.')
+                Logger.logger.debug('Optimal solution found.')
         elif k == self.__options['max_iter']:
             converged = True
-            logging.info('Maximum number of iterations exceeded.')
+            Logger.logger.debug('Maximum number of iterations exceeded.')
         else:
             converged = False
 

@@ -31,6 +31,11 @@ def check_equivalence(controllers, cost, h, x0, dx, alpha):
     """ Check local equivalence of different controllers.
     """
 
+    Logger.logger.info(60*'=')
+    Logger.logger.info(15*' '+'Compare feedback policies...')
+    Logger.logger.info(60*'=')
+    Logger.logger.info('')
+
     log = []
 
     # compute feedback law in direction dx for different alpha values
@@ -62,6 +67,11 @@ def closed_loop_sim(controllers, cost, h, F, x0, N):
 
     """ Perform closed-loop simulations for different controllers starting from x0
     """
+
+    Logger.logger.info(60*'=')
+    Logger.logger.info(10*' '+'Compute closed-loop responses...')
+    Logger.logger.info(60*'=')
+    Logger.logger.info('')
 
     log = initialize_log(controllers, x0)
 

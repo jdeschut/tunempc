@@ -330,6 +330,10 @@ class Pmpc(object):
         # create IPOPT-solver instance if needed
         if self.__options['ipopt_presolve']:
             opts = {'ipopt':{'linear_solver':'ma57','print_level':0},'expand':False}
+            if Logger.logger.getEffectiveLevel() > 10:
+                opts['ipopt']['print_level'] = 0
+                opts['print_time'] = 0
+                opts['ipopt']['sb'] = 'yes'
             self.__solver = ca.nlpsol('solver', 'ipopt', prob, opts)
 
         # create hessian approximation function

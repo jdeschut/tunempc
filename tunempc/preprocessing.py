@@ -46,9 +46,6 @@ def input_formatting(sys):
     # process path constraints
     if 'h' in sys:
 
-        Logger.logger.info(50*'=')
-        Logger.logger.info('Detecting nonlinear constraints...')
-
         # detect and sort out nonlinear inequalities
         g, sys['h'] = detect_nonlinear_inequalities(sys['h'])
 
@@ -60,15 +57,6 @@ def input_formatting(sys):
             # add slacks to system variables
             ns = sys['g'].size1_in(2)
             sys['vars']['us'] = ca.MX.sym('us',ns)
-
-            Logger.logger.info('Nonlinear constraints found: {}'.format(ns))
-            Logger.logger.info('Slack reformulation: {} equality constraints added'.format(ns))
-
-        else:
-            
-            Logger.logger.info('No nonlinear constraints found.')
-
-        Logger.logger.info(50*'=')
 
     return sys
 

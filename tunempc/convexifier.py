@@ -60,17 +60,16 @@ def convexify(A, B, Q, R, N, C = None, opts = {'rho':1e-3, 'solver':'mosek','for
     arg = {**locals()}
     del arg['opts']
 
-    Logger.logger.info(50*'=')
+    # extract steady-state period
+    period = len(arg['A'])
+    
+    Logger.logger.info('Convexify Hessians along {:d}-periodic steady state trajectory.'.format(period))
 
     if arg['C'] is None:
         del arg['C']
         Logger.logger.info('Convexifier called w/o active constraints at steady state')
 
     arg = preprocessing.input_checks(arg)
-
-    # extract steady-state period
-    period = len(arg['A'])
-    Logger.logger.info('Convexify along {:d}-periodic steady state trajectory.'.format(period))
 
     # extract dimensions
     nx = arg['A'][0].shape[0]
@@ -89,6 +88,7 @@ def convexify(A, B, Q, R, N, C = None, opts = {'rho':1e-3, 'solver':'mosek','for
         opts['verbose'] = 0
 
     Logger.logger.info('Construct SDP...')
+    Logger.logger.info('')
     Logger.logger.info(50*'*')
 
     # perform autoscaling
@@ -166,6 +166,10 @@ def convexify(A, B, Q, R, N, C = None, opts = {'rho':1e-3, 'solver':'mosek','for
 
     # check
     assert 1/M.variables['alpha'].value > 0, 'convexified hessian(s) should be positive definite'
+
+    Logger.logger.info('')
+    Logger.logger.info('Hessians convexified.')
+    Logger.logger.info('')
 
     return dHc, dQc, dRc, dNc
 

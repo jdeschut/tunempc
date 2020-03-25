@@ -32,6 +32,7 @@ import tunempc.pmpc as pmpc
 import casadi as ca
 import casadi.tools as ct
 import copy
+from tunempc.logger import Logger
 
 class Tuner(object):
 
@@ -40,28 +41,47 @@ class Tuner(object):
         """ Constructor 
         """
 
+        # print license information
+        self.__log_license_info()
+
+        Logger.logger.info(60*'=')
+        Logger.logger.info(18*' '+'Create Tuner instance...')
+        Logger.logger.info(60*'=')
+        Logger.logger.info('')
+
         # construct system
         sys = {'f': f}
         if h is not None:
             sys['h'] = h
 
-
         # detect nonlinear constraints
+        Logger.logger.info('Detect nonlinear constraints...')
+
         self.__sys = preprocessing.input_formatting(sys)
 
-        # system dimensions
+        # problem dimensions
         self.__nx = sys['vars']['x'].shape[0]
         self.__nu = sys['vars']['u'].shape[0]
+        self.__nw = self.__nx + self.__nu
+        self.__p  = p
         if 'us' in sys['vars'].keys():
             self.__nus = sys['vars']['us'].shape[0]
         else:
             self.__nus = 0
-        self.__nw = self.__nx + self.__nu
-        self.__p  = p
 
         # construct p-periodic OCP
+        if self.__p == 1:
+            Logger.logger.info('Construct steady-state optimization problem...')
+        else:
+            Logger.logger.info('Construct {}-periodic optimal control problem...'.format(self.__p))
+
+
         self.__l = l
         self.__ocp = pocp.Pocp(sys = sys, cost = l, period = p)
+
+        Logger.logger.info('')
+        Logger.logger.info('Tuner instance created:')
+        self.__log_problem_dimensions()
 
         return None
     
@@ -91,7 +111,16 @@ class Tuner(object):
                     w_init['us',k] = self.__sys['g'](w_init['x',k], w_init['u',k],0.0)
 
         # solve OCP
+        Logger.logger.info(60*'=')
+        Logger.logger.info(15*' '+'Solve optimization problem...')
+        Logger.logger.info(60*'=')
+        Logger.logger.info('')
+
         self.__w_sol = self.__ocp.solve(w0=w_init)
+
+        Logger.logger.info('')
+        Logger.logger.info('Optimization problem solved.')
+        Logger.logger.info('')
 
         return self.__w_sol
 
@@ -110,7 +139,14 @@ class Tuner(object):
         R = [H[i][self.__nx:,self.__nx:] for i in range(self.__p)]
         N = [H[i][:self.__nx, self.__nx:] for i in range(self.__p)]
 
+        # convexifier options
         opts = {'rho': rho, 'solver': solver, 'force': force}
+
+        Logger.logger.info(60*'=')
+        Logger.logger.info(15*' '+'Convexify Lagrangian Hessians...')
+        Logger.logger.info(60*'=')
+        Logger.logger.info('')
+
         dHc, _, _, _ = convexifier.convexify(A, B, Q, R, N, D, opts)
         Hc = [H[i] + dHc[i] for i in range(self.__p)] # build tuned MPC hessian
 
@@ -171,6 +207,42 @@ class Tuner(object):
         obj = 0.5*ct.mtimes(dw.T, ct.mtimes(H, dw)) + ct.mtimes(q.T,dw)
 
         return ca.Function('tracking_cost',[w, wref, H, q],[obj])
+
+    def __log_license_info(self):
+
+        """ Print tunempc license info
+        """
+
+        license_info = []
+        license_info += [80*'+']
+        license_info += ['This is TuneMPC, a tool for economic tuning of tracking (N)MPC problems.']
+        license_info += ['TuneMPC is free software; you can redistribute it and/or modify it under the terms']
+        license_info += ['of the GNU Lesser General Public License as published by the Free Software Foundation']
+        license_info += ['license. More information can be found at http://github.com/jdeschut/tunempc.']
+        license_info += [80*'+']
+
+        Logger.logger.info('')
+        for line in license_info:
+            Logger.logger.info(line)
+        Logger.logger.info('')
+
+        return None
+
+    def __log_problem_dimensions(self):
+
+        """ Logging of problem dimensions
+        """
+
+        Logger.logger.info('')
+        Logger.logger.info('Number of states:................:  {}'.format(self.__nx))
+        Logger.logger.info('Number of controls:..............:  {}'.format(self.__nu))
+        if 'h' in self.__sys:
+            Logger.logger.info('Number of linear constraints:....:  {}'.format(self.__sys['h'].size1_out(0)-self.__nus))
+            Logger.logger.info('Number of nonlinear constraints:.:  {}'.format(self.__nus))
+        Logger.logger.info('Steady-state period:.............:  {}'.format(self.__p))
+        Logger.logger.info('')
+
+        return None
 
     @property
     def pocp(self):

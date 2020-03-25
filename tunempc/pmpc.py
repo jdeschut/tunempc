@@ -31,7 +31,7 @@ import numpy as np
 import itertools
 import collections
 import tunempc.sqp_method as sqp_method
-import logging
+from tunempc.logger import Logger
 
 class Pmpc(object):
 
@@ -95,7 +95,7 @@ class Pmpc(object):
 
             if self.__options['hessian_approximation'] == 'gauss_newton':
                 self.__options['hessian_approximation'] = 'exact'
-                logging.warning('Gauss-Newton Hessian approximation cannot be applied for economic MPC problem. Switched to exact Hessian.')
+                Logger.logger.warning('Gauss-Newton Hessian approximation cannot be applied for economic MPC problem. Switched to exact Hessian.')
 
         else:
 

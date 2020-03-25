@@ -24,7 +24,7 @@
 """
 
 import matplotlib.pyplot as plt
-import logging
+from tunempc.logger import Logger
 
 def check_equivalence(controllers, cost, h, x0, dx, alpha):
 
@@ -67,9 +67,9 @@ def closed_loop_sim(controllers, cost, h, F, x0, N):
 
     for i in range(N):
 
-        logging.info('======================================')
-        logging.info('Closed-loop simulation step {} of {}'.format(i, N))
-        logging.info('======================================')
+        Logger.logger.info('======================================')
+        Logger.logger.info('Closed-loop simulation step {} of {}'.format(i, N))
+        Logger.logger.info('======================================')
 
         for name in list(controllers.keys()):
 

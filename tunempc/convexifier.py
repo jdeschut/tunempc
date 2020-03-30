@@ -362,8 +362,6 @@ def autoScaling(Q, R, N):
     
     # maximum condition number
     max_cond = max_eig/min_eig
-    min_eig = 1e-8 # SDP SCALING!!!
-    max_cond = 1e8
 
     scaling = {
         'alpha': 1/min_eig,

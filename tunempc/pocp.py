@@ -279,12 +279,16 @@ class Pocp(object):
             else:
                 args = [map_args['x'],map_args['u']]
 
-            # compute active constraints
+            # compute gradient of constraints
             mu_s  = lam_g['h']
             C  = np.split(self.__jac_h(*args).full(), self.__N, axis = 1)
             if 'g' in lam_g.keys():
                 lam_s = lam_g['g']
-                D  = np.split(self.__jac_g(*args).full(), self.__N, axis = 1)
+                G  = np.split(self.__jac_g(*args).full(), self.__N, axis = 1)
+            else:
+                G  = None
+
+            # retrieve active set
             C_As = []
             self.__indeces_As = []
             for k in range(self.__N):
@@ -294,9 +298,9 @@ class Pocp(object):
                     if np.abs(mu_s[k][i].full()) > self.__mu_tresh:
                         C_active.append(C[k][i,:])
                         index_active.append(i)
-                if 'g' in lam_g.keys(): # equality constraints are treated as always active
-                    for i in range(lam_s[k].shape[0]):
-                        C_active.append(D[k][i,:])
+                # if 'g' in lam_g.keys(): # equality constraints are treated as always active
+                #     for i in range(lam_s[k].shape[0]):
+                #         C_active.append(D[k][i,:])
                 if len(C_active) > 0:
                     C_As.append(ca.horzcat(*C_active).full().T)
                 else:
@@ -304,6 +308,7 @@ class Pocp(object):
                 self.__indeces_As.append(index_active)
         else:
             C_As = None
+            G    = None
             self.__indeces_As = None
 
         # compute hessian of lagrangian
@@ -329,7 +334,7 @@ class Pocp(object):
         else:
             jl = [np.zeros((1,self.__nx+self.__nu)) for i in range(self.__N)]
 
-        return Hlag, jl, A, B, C_As
+        return Hlag, jl, A, B, C_As, G
 
     def __construct_sensitivity_funcs(self):
 

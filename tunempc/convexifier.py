@@ -33,7 +33,7 @@ from functools import reduce
 import tunempc.preprocessing as preprocessing
 from tunempc.logger import Logger
 
-def convexify(A, B, Q, R, N, C = None, opts = {'rho':1e-3, 'solver':'mosek','force': False}):
+def convexify(A, B, Q, R, N, G = None, C = None, opts = {'rho':1e-3, 'solver':'mosek','force': False}):
 
     """ Convexify the indefinite Hessian "H" of the system with the discrete time dynamics
 
@@ -51,6 +51,7 @@ def convexify(A, B, Q, R, N, C = None, opts = {'rho':1e-3, 'solver':'mosek','for
     :param R: weighting matrix R (nu,nu)
     :param N: weighting matrix N (nx,nu)
     :param C: jacobian of active constraints at steady state (nc, nx+nu)
+    :param G: jacobian of equality constraints at steady state (ng, nx+nu)
     :param opts: tuning options
 
     :return: Convexified Hessian supplement "dH".
@@ -60,16 +61,18 @@ def convexify(A, B, Q, R, N, C = None, opts = {'rho':1e-3, 'solver':'mosek','for
     arg = {**locals()}
     del arg['opts']
 
-    # extract steady-state period
-    period = len(arg['A'])
-    
-    Logger.logger.info('Convexify Hessians along {:d}-periodic steady state trajectory.'.format(period))
-
     if arg['C'] is None:
         del arg['C']
         Logger.logger.info('Convexifier called w/o active constraints at steady state')
+    if arg['G'] is None:
+        del arg['G']
 
+    # check inputs
     arg = preprocessing.input_checks(arg)
+
+    # extract steady-state period
+    period = len(arg['A'])
+    Logger.logger.info('Convexify Hessians along {:d}-periodic steady state trajectory.'.format(period))
 
     # extract dimensions
     nx = arg['A'][0].shape[0]
@@ -155,7 +158,7 @@ def convexify(A, B, Q, R, N, C = None, opts = {'rho':1e-3, 'solver':'mosek','for
 
     return dHc, dQc, dRc, dNc
 
-def convexHessianSuppl(A, B, Q, R, N, dP, C = None, F = None):
+def convexHessianSuppl(A, B, Q, R, N, dP, G = None, Fg = None, C = None, F = None):
 
     """ Construct the convexified Hessian Supplement
 
@@ -186,6 +189,8 @@ def convexHessianSuppl(A, B, Q, R, N, dP, C = None, F = None):
         Nco = np.dot(np.dot(B[i].T, dP2.T), A[i]).T
         Hco = mtools.buildHessian(Qco, Rco, Nco)
 
+        if G:
+            Hco = Hco + np.dot(np.dot(G[i].T,np.diagflat(Fg[i])),G[i])
         if F:
             if C[i] is not None:
                 nc = C[i].shape[0]
@@ -199,7 +204,7 @@ def convexHessianSuppl(A, B, Q, R, N, dP, C = None, F = None):
 
     return dHc, dQc, dRc, dNc
 
-def setUpModelPicos(A, B, Q, R, N, C = None, rho = 1e-3, constr = True):
+def setUpModelPicos(A, B, Q, R, N, G = None, C = None, rho = 1e-3, constr = True):
 
     """ Description
     :param A:
@@ -230,12 +235,22 @@ def setUpModelPicos(A, B, Q, R, N, C = None, rho = 1e-3, constr = True):
     beta  = M.add_variable('beta', 1, vtype='continuous')
     dP = [M.add_variable('dP'+str(i), (nx,nx), vtype='symmetric') for i in range(period)]
 
-    # alpha should be positive
+    # alpha should be positive 
     M.add_constraint(alpha > 1e-8)
+    # M.add_constraint(alpha < 1e8/scaling['alpha'])
 
-    # add regularisation in null space of constraints
+    # add regularisation in range space of equality constraints
+    if G is not None:
+        ng = G[0].shape[0]
+        Fg = [M.add_variable('Fg'+str(i), (ng,1), vtype='continuous') for i in range(period)]
+        for i in range(period):
+            M.add_constraint(Fg[i] > 0)
+    else:
+        Fg = None
+
+    # add regularisation in range space of active inequality constraints
     if (C is not None) and (constr is True): # TODO check if this is correct
-        F, t = [], []
+        F = []
         for i in range(period):
             if C[i] is not None:
                 nc = C[i].shape[0] # number of active constraints at index
@@ -248,16 +263,19 @@ def setUpModelPicos(A, B, Q, R, N, C = None, rho = 1e-3, constr = True):
     obj = beta # minimize condition number
     if constr is True:
         for i in range(period):
-            obj = picos.sum(obj, abs(rho*F[i]))
+            if F[i] is not None:
+                obj = picos.sum(obj, abs(rho*F[i]))
+            if G is not None:
+                obj = picos.sum(obj, abs(rho*Fg[i]))
 
     M.set_objective('min', obj)
 
     # formulate convexified Hessian expression
     if not constr:
-        HcE = [convexHessianExprPicos(Q, R, N, A, B, dP, alpha, scaling, index = i)  \
+        HcE = [convexHessianExprPicos(Q, R, N, A, B, dP, alpha, scaling, G = G, Fg = Fg, index = i)  \
             for i in range(period)]
     else:
-        HcE = [convexHessianExprPicos(Q, R, N, A, B, dP, alpha, scaling, C = C, F = F, index = i) \
+        HcE = [convexHessianExprPicos(Q, R, N, A, B, dP, alpha, scaling, G = G, Fg = Fg, C = C, F = F, index = i) \
              for i in range(period)]
 
     # formulate constraints
@@ -267,7 +285,7 @@ def setUpModelPicos(A, B, Q, R, N, C = None, rho = 1e-3, constr = True):
 
     return M
 
-def convexHessianExprPicos(Q, R, N, A, B, dP, alpha, scaling, index, C = None, F = None):
+def convexHessianExprPicos(Q, R, N, A, B, dP, alpha, scaling, index, G = None, C = None, F = None, Fg = None):
 
     """ Construct the Picos symbolic expression of the convexified Hessian
     
@@ -289,6 +307,8 @@ def convexHessianExprPicos(Q, R, N, A, B, dP, alpha, scaling, index, C = None, F
 
     if C is not None:
         CM = C[index]
+    if G is not None:
+        GM = G[index]
 
     dP1 = scaling['dP']*dP[index]
     dP2 = scaling['dP']*dP[(index+1)%period]
@@ -301,6 +321,8 @@ def convexHessianExprPicos(Q, R, N, A, B, dP, alpha, scaling, index, C = None, F
     dH = (dQ & dN) // (dN.T & dR)
 
     # add constraints contribution
+    if G is not None:
+        dH = dH + GM.T*picos.diag(scaling['F']*Fg[index])*GM
     if F is not None:
         if F[index] is not None:
             dH = dH + CM.T*picos.diag(scaling['F']*F[index])*CM
@@ -350,31 +372,35 @@ def autoScaling(Q, R, N):
         'F': 1/min_eig,
         'T': 1/min_eig
     }
-    
+
     return scaling
 
-def check_convergence(M, scaling, A, B, Q, R, N, C = None, constr = False):
+def check_convergence(M, scaling, A, B, Q, R, N, G = None, Fg = None, C = None, constr = False):
 
     # build convex hessian list
     dP = [scaling['dP']*np.array(M.variables['dP'+str(i)].value)/(scaling['alpha']*M.variables['alpha'].value) \
         for i in range(len(A))]
 
+    if G is not None:
+        Fg = [scaling['F']*np.array(M.variables['Fg'+str(i)].value)/(scaling['alpha']*M.variables['alpha'].value) \
+            for i in range(len(A))]
+
     if not constr:
-        dHc, dQc, dRc, dNc = convexHessianSuppl( A, B, Q, R, N, dP)
+        dHc, dQc, dRc, dNc = convexHessianSuppl( A, B, Q, R, N, dP, G = G, Fg = Fg)
     else:
         F = [scaling['F']*np.array(M.variables['F'+str(i)].value)/(scaling['alpha']*M.variables['alpha'].value) \
             for i in range(len(A))]
-        dHc, dQc, dRc, dNc = convexHessianSuppl( A, B, Q, R, N, dP, C = C,  F =  F)
+        dHc, dQc, dRc, dNc = convexHessianSuppl( A, B, Q, R, N, dP, G = G, Fg = Fg, C = C,  F = F)
 
     # add hessian supplements
-    Hc = [mtools.buildHessian(Q[k], R[k], N[k]) + dHc for k in range(len(dHc))]
+    Hc = [mtools.buildHessian(Q[k], R[k], N[k]) + dHc[k] for k in range(len(dHc))]
 
     # compute eigenvalues
     min_eigenvalue = min([np.min(np.linalg.eigvals(Hk)) for Hk in Hc])
     max_eigenvalue = max([np.max(np.linalg.eigvals(Hk)) for Hk in Hc])
-    max_cond       = max([np.linalg.cond(Hk) for Hk in Hc])[0]
+    max_cond       = max([np.linalg.cond(Hk) for Hk in Hc])
 
-    if min_eigenvalue > 1e-8:
+    if min_eigenvalue > 0.0:
         if M.status == 'optimal':
             status = 'Optimal'
         else:
@@ -385,6 +411,7 @@ def check_convergence(M, scaling, A, B, Q, R, N, C = None, constr = False):
     else:
         status = 'Infeasible'
         Logger.logger.info('SDP solver status: {}'.format(M.status))
+        Logger.logger.info('Minimum eigenvalue: {}'.format(min_eigenvalue))
         Logger.logger.info('!! Problem infeasible !!')
 
     return status, dHc, dQc, dRc, dNc

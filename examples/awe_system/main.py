@@ -63,7 +63,7 @@ wsol = tuner.solve_ocp(w0 = user_input['w0'])
 Hc   = tuner.convexify(solver='mosek')
 
 # extract OCP sensitivities at optimal solution
-[Hlag, q, A, B, C_As] = tuner.pocp.get_sensitivities()
+[Hlag, q, A, B, C_As, D] = tuner.pocp.get_sensitivities()
 
 # set-up open-loop scenario
 Nmpc  = 20

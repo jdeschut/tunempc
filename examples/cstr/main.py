@@ -74,7 +74,7 @@ lOpt = cost(wsol['x',0], wsol['u',0])
 Hc   = tuner.convexify()
 
 # extract OCP sensitivities at optimal solution
-[Hlag, q, A, B, C_As] = tuner.pocp.get_sensitivities()
+[Hlag, q, A, B, C_As, G] = tuner.pocp.get_sensitivities()
 
 # prediction time grid
 tgrid = [Ts*k for k in range(N)]

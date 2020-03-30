@@ -160,7 +160,7 @@ Hc = tuner.convexify(rho = 1e-3, force = False, solver='mosek')
 N = 200
 
 # gradient
-[H, q, _, _, _]  = tuner.pocp.get_sensitivities()
+[H, q, _, _, _, _]  = tuner.pocp.get_sensitivities()
 
 # economic mpc controller
 ctrls = {}

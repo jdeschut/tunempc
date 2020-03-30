@@ -132,7 +132,7 @@ class Tuner(object):
 
 
         # extract POCP sensitivities at optimal solution
-        [H, q, A, B, D] = self.__ocp.get_sensitivities()
+        [H, q, A, B, C, G] = self.__ocp.get_sensitivities()
 
         # extract Q, R, N
         Q = [H[i][:self.__nx,:self.__nx] for i in range(self.__p)]
@@ -147,10 +147,10 @@ class Tuner(object):
         Logger.logger.info(60*'=')
         Logger.logger.info('')
 
-        dHc, _, _, _ = convexifier.convexify(A, B, Q, R, N, D, opts)
+        dHc, _, _, _ = convexifier.convexify(A, B, Q, R, N, C = C, G = G, opts=opts)
         Hc = [H[i] + dHc[i] for i in range(self.__p)] # build tuned MPC hessian
 
-        self.__S = {'H': H,'q': q,'A': A,'B': B,'D': D,'Hc': Hc}
+        self.__S = {'H': H,'q': q,'A': A,'B': B,'C': C,'G': G,'Hc': Hc}
 
         return Hc
 

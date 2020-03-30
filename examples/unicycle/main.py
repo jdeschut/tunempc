@@ -115,7 +115,7 @@ w0['u'] = 2*np.pi/T
 
 wsol = tuner.solve_ocp(w0 = w0.cat)
 Hc   = tuner.convexify(solver='mosek')
-[H, q, _, _, _]  = tuner.pocp.get_sensitivities()
+[H, q, _, _, _, _]  = tuner.pocp.get_sensitivities()
 
 # add projection operator for terminal constraint
 sys = tuner.sys

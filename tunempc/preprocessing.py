@@ -131,7 +131,7 @@ def add_mpc_slacks(sys, lam_g, active_set, slack_flag = 'active'):
 def input_checks(arg):
 
     """
-    Input checks for provided convexification matrices A, B, Q, R, N, (C).
+    Input checks for provided convexification matrices A, B, Q, R, N, G, (C).
 
     - Check if all provided matrices are of same type (list vs. single matrix)
     - Check if size of matrices is consistent troughout time

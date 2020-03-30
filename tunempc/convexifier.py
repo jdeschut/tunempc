@@ -103,17 +103,15 @@ def convexify(A, B, Q, R, N, C = None, opts = {'rho':1e-3, 'solver':'mosek','for
     constraint_contribution = False
     M = solveSDP(M, opts)
 
-    if M.status == 'optimal':
+    status, dHc, dQc, dRc, dNc = check_convergence(M, scaling, **arg, constr = constraint_contribution)
 
-        Logger.logger.info('Optimal solution found.')
-        Logger.logger.info('Maximum condition number: {}'.format(scaling['beta']*M.variables['beta'].value))
-        Logger.logger.info('Smallest eigenvalue: {}'.format(1/(scaling['alpha']*M.variables['alpha'].value)))
+    if status in ['Optimal', 'Feasible']:
+
         Logger.logger.info('EQUIVALENCE TYPE A')
         Logger.logger.info(50*'*')
 
-    if M.status != 'optimal' and 'C' in arg:
+    if status == 'Infeasible' and 'C' in arg:
         
-        Logger.logger.info('!! Problem infeasible !!')
         Logger.logger.info(50*'*')
         Logger.logger.info('Step 2: (\u03B7_F = 1), (\u03B7_T = 0)')
 
@@ -124,17 +122,15 @@ def convexify(A, B, Q, R, N, C = None, opts = {'rho':1e-3, 'solver':'mosek','for
         constraint_contribution = True
         M = solveSDP(M, opts)
 
-        if M.status == 'optimal':
+        status, dHc, dQc, dRc, dNc = check_convergence(M, scaling, **arg, constr = constraint_contribution)
 
-            Logger.logger.info('Optimal solution found.')
-            Logger.logger.info('Maximum condition number: {}'.format(scaling['beta']*M.variables['beta'].value))
-            Logger.logger.info('Smallest eigenvalue: {}'.format(1/(scaling['alpha']*M.variables['alpha'].value)))
+        if status in ['Optimal', 'Feasible']:
+
             Logger.logger.info('EQUIVALENCE TYPE B')
             Logger.logger.info(50*'*')
 
-    if M.status != 'optimal':
+    if status == 'Infeasible':
 
-        Logger.logger.warning('!! Problem infeasible !!')
         Logger.logger.warning('!! Strict dissipativity does not hold locally !!')
         Logger.logger.warning('!! The provided indefinite LQ MPC problem is not stabilising !!')
         Logger.logger.warning(50*'*')
@@ -152,20 +148,6 @@ def convexify(A, B, Q, R, N, C = None, opts = {'rho':1e-3, 'solver':'mosek','for
             Logger.logger.warning('Convexification and stabilization of the MPC scheme can be enforced by enabling "force"-flag.')
             Logger.logger.warning('In this case there are no guarantees of (local, first-order) equivalence.')
             raise ValueError('Convexification is not possible if the system is not optimally operated at the optimal orbit.')
-
-    # build convex hessian list
-    dP = [scaling['dP']*np.array(M.variables['dP'+str(i)].value)/(scaling['alpha']*M.variables['alpha'].value) \
-        for i in range(period)]
-
-    if not constraint_contribution:
-        dHc, dQc, dRc, dNc = convexHessianSuppl(**arg, dP = dP)
-    else:
-        F = [scaling['F']*np.array(M.variables['F'+str(i)].value)/(scaling['alpha']*M.variables['alpha'].value) \
-            for i in range(period)]
-        dHc, dQc, dRc, dNc = convexHessianSuppl(**arg, dP = dP, F =  F)
-
-    # check
-    assert 1/M.variables['alpha'].value > 0, 'convexified hessian(s) should be positive definite'
 
     Logger.logger.info('')
     Logger.logger.info('Hessians convexified.')
@@ -368,5 +350,41 @@ def autoScaling(Q, R, N):
         'F': 1/min_eig,
         'T': 1/min_eig
     }
-
+    
     return scaling
+
+def check_convergence(M, scaling, A, B, Q, R, N, C = None, constr = False):
+
+    # build convex hessian list
+    dP = [scaling['dP']*np.array(M.variables['dP'+str(i)].value)/(scaling['alpha']*M.variables['alpha'].value) \
+        for i in range(len(A))]
+
+    if not constr:
+        dHc, dQc, dRc, dNc = convexHessianSuppl( A, B, Q, R, N, dP)
+    else:
+        F = [scaling['F']*np.array(M.variables['F'+str(i)].value)/(scaling['alpha']*M.variables['alpha'].value) \
+            for i in range(len(A))]
+        dHc, dQc, dRc, dNc = convexHessianSuppl( A, B, Q, R, N, dP, C = C,  F =  F)
+
+    # add hessian supplements
+    Hc = [mtools.buildHessian(Q[k], R[k], N[k]) + dHc for k in range(len(dHc))]
+
+    # compute eigenvalues
+    min_eigenvalue = min([np.min(np.linalg.eigvals(Hk)) for Hk in Hc])
+    max_eigenvalue = max([np.max(np.linalg.eigvals(Hk)) for Hk in Hc])
+    max_cond       = max([np.linalg.cond(Hk) for Hk in Hc])[0]
+
+    if min_eigenvalue > 1e-8:
+        if M.status == 'optimal':
+            status = 'Optimal'
+        else:
+            status = 'Feasible'
+        Logger.logger.info('{} solution found.'.format(status))
+        Logger.logger.info('Maximum condition number: {}'.format(max_cond))
+        Logger.logger.info('Minimum eigenvalue: {}'.format(min_eigenvalue))
+    else:
+        status = 'Infeasible'
+        Logger.logger.info('SDP solver status: {}'.format(M.status))
+        Logger.logger.info('!! Problem infeasible !!')
+
+    return status, dHc, dQc, dRc, dNc

@@ -100,7 +100,7 @@ def dynamics(x, u, data):
     # create ode for integrator
     ode = {'x':x, 'p':u,'ode': xdot}
 
-    return ca.integrator('F','collocation',ode,{'tf':1})
+    return [ca.integrator('F','collocation',ode,{'tf':1}), ode]
 
 def vars():
 
@@ -145,7 +145,7 @@ nx = x.shape[0]
 nu = u.shape[0]
 
 tuner = tunempc.Tuner(
-    f = dynamics(x, u, data),
+    f = dynamics(x, u, data)[0],
     l = objective(x,u,data),
     h = constraints(x,u, data),
     p = 1
@@ -174,14 +174,172 @@ ctrls['tracking'] = tuner.create_mpc('tracking',N = N, tuning = tuningTn)
 # tuned tracking mpc controller
 ctrls['tuned'] = tuner.create_mpc('tuned',N = N)
 
-alpha = [0.1, 0.5, 1.0]
-log = clt.check_equivalence(ctrls, objective(x,u,data), sys['h'], wsol['x',0], ca.vertcat(0.0, 10.0), alpha)
 
-# plot feedback controls to check equivalence
-for name in list(ctrls.keys()):
-    for i in range(nu):
-        plt.figure(i)
-        plt.plot(alpha, [log[j]['u'][name][0][i] for j in range(len(alpha))])
-        plt.legend(list(ctrls.keys()))
+COST_TYPE = 'linear_ls'
+MPC_TYPE = 'tuned'
+TERMINAL_CONSTR = True
+INEQ_CONSTR = True
+N = 200
 
+import os
+os.system('rm *.json')
+os.system('rm -rf c_generated_code')
+ode = ca.Function('ode',[x.cat,u.cat],[dynamics(x,u,data)[1]['ode']])
+
+from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver, AcadosSimSolver
+xref = np.squeeze(wsol['x',0].full())
+uref = np.squeeze(wsol['u',0].full())
+
+model = AcadosModel()
+xdot = ca.MX.sym('xdot',tuner.sys['vars']['x'].shape[0])
+model.xdot = xdot
+model.f_impl_expr = xdot - ode(tuner.sys['vars']['x'], tuner.sys['vars']['u'])
+model.f_expl_expr = xdot
+model.x = tuner.sys['vars']['x']
+model.u = tuner.sys['vars']['u']
+model.p = []
+# model.z = z
+model.name = 'evaporation_process'
+
+if INEQ_CONSTR:
+    model.con_h_expr = tuner.sys['h'](tuner.sys['vars']['x'], tuner.sys['vars']['u'])
+
+if COST_TYPE == 'external':
+    if MPC_TYPE == 'economic':
+        model.cost_expr_ext_cost = tuner.l(tuner.sys['vars']['x'], tuner.sys['vars']['u'])
+    elif MPC_TYPE == 'tuned':
+        w = ca.vertcat(tuner.sys['vars']['x'] - xref, tuner.sys['vars']['u']-uref)
+        model.cost_expr_ext_cost = 0.5*ct.mtimes(ct.mtimes(w.T, tuner.S['Hc'][0].full()), w) + ct.mtimes(q[0],w)
+ocp = AcadosOcp()
+ocp.model = model
+
+ny = nx + nu
+ny_e = nx
+N = N
+
+# set dimensions
+ocp.dims.N = N
+
+# set cost module
+if COST_TYPE == 'external':
+    ocp.cost.cost_type = 'EXTERNAL'
+elif COST_TYPE == 'linear_ls':
+    ocp.cost.cost_type = 'LINEAR_LS'
+    ocp.cost.W = tuner.S['Hc'][0].full()
+    ocp.cost.W_e = np.zeros((nx,nx))
+    ocp.cost.Vx = np.zeros((ny, nx))
+    ocp.cost.Vx[:nx,:nx] = np.eye(nx)
+    Vu = np.zeros((ny, nu))
+    Vu[nx:,:] = np.eye(nu)
+    ocp.cost.Vu = Vu
+    ocp.cost.Vx_e = np.eye(nx)
+    ocp.cost.yref  = np.squeeze(ca.vertcat(xref,uref).full())
+    ocp.cost.yref_e = np.zeros((ny_e, ))
+
+ocp.cost.cost_type_e = 'LINEAR_LS'
+
+
+# initial condition
+ocp.constraints.x0 = xref
+
+# set inequality constraints
+if INEQ_CONSTR:
+    ocp.constraints.constr_type = 'BGH'
+    ocp.constraints.lh = np.zeros((5,))
+    ocp.constraints.uh = 1e15*np.ones((5,))
+
+# terminal constraint
+if TERMINAL_CONSTR:
+    ocp.constraints.lbx_e = xref
+    ocp.constraints.ubx_e = xref
+    ocp.constraints.Jbx_e = np.eye(nx)
+
+
+ocp.solver_options.qp_solver = 'FULL_CONDENSING_QPOASES' # PARTIAL_CONDENSING_HPIPM
+if COST_TYPE == 'linear_ls':
+    ocp.solver_options.hessian_approx = 'GAUSS_NEWTON'
+ocp.solver_options.integrator_type = 'IRK'
+ocp.solver_options.nlp_solver_type = 'SQP' # SQP_RTI
+ocp.solver_options.qp_solver_cond_N = 2 # ???
+ocp.solver_options.print_level = 0
+
+# set prediction horizon
+ocp.solver_options.tf = N
+
+acados_ocp_solver = AcadosOcpSolver(ocp, json_file = 'acados_ocp_' + model.name + '.json')
+acados_integrator = AcadosSimSolver(ocp, json_file = 'acados_ocp_' + model.name + '.json')
+
+simX = np.ndarray((N+1, nx))
+simU = np.ndarray((N, nu))
+
+xcurrent = xref
+simX[0,:] = xcurrent
+
+# initialize
+for i in range(N):
+    acados_ocp_solver.set(i, "x", xref)
+    acados_ocp_solver.set(i, "u", uref)
+
+# closed loop
+for i in range(N):
+    print(i)
+    # solve ocp
+    acados_ocp_solver.set(0, "lbx", xcurrent)
+    acados_ocp_solver.set(0, "ubx", xcurrent)
+
+    status = acados_ocp_solver.solve()
+
+    if status != 0:
+        raise Exception('acados acados_ocp_solver returned status {}. Exiting.'.format(status))
+
+    simU[i,:] = acados_ocp_solver.get(0, "u")
+
+    # simulate system
+    acados_integrator.set("x", xcurrent)
+    acados_integrator.set("u", simU[i,:])
+
+    status = acados_integrator.solve()
+    if status != 0:
+        raise Exception('acados integrator returned status {}. Exiting.'.format(status))
+
+    # update state
+    xcurrent = acados_integrator.get("x")
+    if i == 0:
+        xcurrent = xcurrent + np.array([0.0, 1.0])
+    simX[i+1,:] = xcurrent
+
+
+for i in range(nu):
+    plt.subplot(nx+nu, 1, i+1)
+    plt.step(range(N), simU[:,i], color='r')
+    if i == 0:
+        plt.title('closed-loop simulation')
+    plt.hlines(400.0, 0, N-1, linestyles='dashed', alpha=0.7)
+    plt.ylabel('$u$')
+    plt.xlabel('$t$')
+    plt.grid()
+
+for i in range(nx):
+    plt.subplot(nx+nu, 1, i+nu+1)
+    plt.plot(range(N+1), simX[:,i], label='true')
+    if i == 0:
+        plt.hlines(25.0, 0, N, linestyles='dashed', alpha=0.7)
+    if i == 1:
+        plt.hlines(40.0, 0, N, linestyles='dashed', alpha=0.7)
+        plt.hlines(80.0, 0, N, linestyles='dashed', alpha=0.7)
+    plt.xlabel('$t$')
+    plt.grid()
+    plt.legend(loc=1)
+
+    plt.subplots_adjust(left=None, bottom=None, right=None, top=None, hspace=0.4)
 plt.show()
+
+# alpha = [0.1, 0.5, 1.0]
+# log = clt.check_equivalence(ctrls, objective(x,u,data), sys['h'], wsol['x',0], ca.vertcat(0.0, 10.0), alpha)
+
+# # plot feedback controls to check equivalence
+# for name in list(ctrls.keys()):
+#     for i in range(nu):
+#         plt.figure(i)
+#         plt.plot(alpha, [log[j]['u'][name][0][i] for j in range(len(alpha))])
+#         plt.legend(list(ctrls.keys()))

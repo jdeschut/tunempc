@@ -268,3 +268,8 @@ class Tuner(object):
     def l(self):
         "Economic cost function"
         return self.__l
+
+    @property
+    def S(self):
+        "Sensitivity information"
+        return self.__S

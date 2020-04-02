@@ -117,6 +117,7 @@ class Tuner(object):
         Logger.logger.info('')
 
         self.__w_sol = self.__ocp.solve(w0=w_init)
+        self.__S     = self.__ocp.get_sensitivities()
 
         Logger.logger.info('')
         Logger.logger.info('Optimization problem solved.')
@@ -132,12 +133,12 @@ class Tuner(object):
 
 
         # extract POCP sensitivities at optimal solution
-        [H, q, A, B, C, G] = self.__ocp.get_sensitivities()
+        S = self.__S
 
         # extract Q, R, N
-        Q = [H[i][:self.__nx,:self.__nx] for i in range(self.__p)]
-        R = [H[i][self.__nx:,self.__nx:] for i in range(self.__p)]
-        N = [H[i][:self.__nx, self.__nx:] for i in range(self.__p)]
+        Q = [S['H'][i][:self.__nx,:self.__nx] for i in range(self.__p)]
+        R = [S['H'][i][self.__nx:,self.__nx:] for i in range(self.__p)]
+        N = [S['H'][i][:self.__nx, self.__nx:] for i in range(self.__p)]
 
         # convexifier options
         opts = {'rho': rho, 'solver': solver, 'force': force}
@@ -147,12 +148,10 @@ class Tuner(object):
         Logger.logger.info(60*'=')
         Logger.logger.info('')
 
-        dHc, _, _, _ = convexifier.convexify(A, B, Q, R, N, C = C, G = G, opts=opts)
-        Hc = [H[i] + dHc[i] for i in range(self.__p)] # build tuned MPC hessian
+        dHc, _, _, _ = convexifier.convexify(S['A'], S['B'], Q, R, N, C = S['C_As'], G = S['G'], opts=opts)
+        S['Hc'] = [S['H'][i] + dHc[i] for i in range(self.__p)] # build tuned MPC hessian
 
-        self.__S = {'H': H,'q': q,'A': A,'B': B,'C': C,'G': G,'Hc': Hc}
-
-        return Hc
+        return S['Hc']
 
     def create_mpc(self, mpc_type, N, opts = {}, tuning = None):
 

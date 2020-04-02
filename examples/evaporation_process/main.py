@@ -160,7 +160,7 @@ Hc = tuner.convexify(rho = 1e-3, force = False, solver='mosek')
 N = 200
 
 # gradient
-[H, q, _, _, _, _]  = tuner.pocp.get_sensitivities()
+S  = tuner.S
 
 # economic mpc controller
 ctrls = {}
@@ -168,7 +168,7 @@ sys  = tuner.sys
 ctrls['economic'] = tuner.create_mpc('economic',N = N)
 
 # normal tracking mpc controller
-tuningTn = {'H': [np.diag([10.0, 10.0, 0.1, 0.1])], 'q': q}
+tuningTn = {'H': [np.diag([10.0, 10.0, 0.1, 0.1])], 'q': S['q']}
 ctrls['tracking'] = tuner.create_mpc('tracking',N = N, tuning = tuningTn)
 
 # tuned tracking mpc controller

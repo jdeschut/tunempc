@@ -174,18 +174,16 @@ ctrls['tracking'] = tuner.create_mpc('tracking',N = N, tuning = tuningTn)
 # tuned tracking mpc controller
 ctrls['tuned'] = tuner.create_mpc('tuned',N = N)
 
-
 # ======================
 # OPTIONS
 # ======================
 COST_TYPE = 'linear_ls'
-MPC_TYPE = 'tuned'
 TERMINAL_CONSTR = True
 INEQ_CONSTR = True
 PLOT_PREDICTION = True
 N = 200
-Nsim = 30
-dP2 = 0.1 # initial perturbation
+Nsim = 1
+dP2 = 1.0 # initial perturbation
 # alpha = [1.0]
 # log = clt.check_equivalence(ctrls, objective(x,u,data), sys['h'], wsol['x',0], ca.vertcat(0.0, dP2), alpha)
 
@@ -214,11 +212,7 @@ model.name = 'evaporation_process'
 #     model.con_h_expr = tuner.sys['h'](tuner.sys['vars']['x'], tuner.sys['vars']['u'])
 
 if COST_TYPE == 'external':
-    if MPC_TYPE == 'economic':
-        model.cost_expr_ext_cost = tuner.l(tuner.sys['vars']['x'], tuner.sys['vars']['u'])
-    elif MPC_TYPE == 'tuned':
-        w = ca.vertcat(tuner.sys['vars']['x'] - xref, tuner.sys['vars']['u']-uref)
-        model.cost_expr_ext_cost = 0.5*ct.mtimes(ct.mtimes(w.T, tuner.S['Hc'][0].full()), w) + ct.mtimes(q[0],w)
+    model.cost_expr_ext_cost = tuner.l(tuner.sys['vars']['x'], tuner.sys['vars']['u'])
 
 # ======================
 # ACADOS OCP
@@ -245,7 +239,7 @@ elif COST_TYPE == 'linear_ls':
     Vu[nx:,:] = np.eye(nu)
     ocp.cost.Vu = Vu
     ocp.cost.Vx_e = np.eye(nx)
-    ocp.cost.yref  = np.squeeze(ca.vertcat(xref,uref).full())
+    ocp.cost.yref  = np.squeeze(ca.vertcat(xref,uref).full() - ct.mtimes(np.linalg.inv(S['Hc'][0]),S['q'][0].T).full())
     ocp.cost.yref_e = np.zeros((ny_e, ))
 
 ocp.cost.cost_type_e = 'LINEAR_LS'
@@ -344,7 +338,7 @@ for i in range(Nsim):
             plt.step(range(N), predU[:,k], color='r', where='post')
             if k == 0:
                 plt.title('closed-loop simulation')
-            plt.hlines(400.0, 0, N-1, linestyles='dashed', alpha=0.7)
+            # plt.hlines(400.0, 0, N-1, linestyles='dashed', alpha=0.7)
             plt.ylabel('$u$')
             plt.xlabel('$t$')
             plt.grid()
@@ -352,11 +346,11 @@ for i in range(Nsim):
         for k in range(nx):
                 plt.subplot(nx+nu, 1, k+nu+1)
                 plt.plot(range(N+1), predX[:,k], label='true')
-                if k == 0:
-                    plt.hlines(25.0, 0, N, linestyles='dashed', alpha=0.7)
-                if k == 1:
-                    plt.hlines(40.0, 0, N, linestyles='dashed', alpha=0.7)
-                    plt.hlines(80.0, 0, N, linestyles='dashed', alpha=0.7)
+                # if k == 0:
+                #     plt.hlines(25.0, 0, N, linestyles='dashed', alpha=0.7)
+                # if k == 1:
+                #     plt.hlines(40.0, 0, N, linestyles='dashed', alpha=0.7)
+                #     plt.hlines(80.0, 0, N, linestyles='dashed', alpha=0.7)
                 plt.xlabel('$t$')
                 plt.grid()
                 plt.legend(loc=1)

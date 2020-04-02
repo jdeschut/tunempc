@@ -259,13 +259,16 @@ class Pocp(object):
             map_args['us'] = ct.horzcat(*wsol['us'])
             map_args['lam_s'] = ct.horzcat(*lam_g['g'])
 
+        # sensitivity dict
+        S = {}
+
         # dynamics sensitivities
-        A    = np.split(self.__jac_Fx(
+        S['A']    = np.split(self.__jac_Fx(
             map_args['x'],
             map_args['u']
         ).full(), self.__N, axis = 1)
 
-        B    = np.split(self.__jac_Fu(
+        S['B']    = np.split(self.__jac_Fu(
             map_args['x'],
             map_args['u']
         ).full(), self.__N, axis = 1)
@@ -281,12 +284,15 @@ class Pocp(object):
 
             # compute gradient of constraints
             mu_s  = lam_g['h']
-            C  = np.split(self.__jac_h(*args).full(), self.__N, axis = 1)
+            S['C']  = np.split(self.__jac_h(*args).full(), self.__N, axis = 1)
+            S['e'] =  np.split(self.__h(*args).full(), self.__N, axis = 1)
             if 'g' in lam_g.keys():
                 lam_s = lam_g['g']
-                G  = np.split(self.__jac_g(*args).full(), self.__N, axis = 1)
+                S['G']  = np.split(self.__jac_g(*args).full(), self.__N, axis = 1)
+                S['r'] =  np.split(self.__gnl(*args).full(), self.__N, axis = 1)
             else:
-                G  = None
+                S['G']  = None
+                S['r'] =  None
 
             # retrieve active set
             C_As = []
@@ -296,19 +302,20 @@ class Pocp(object):
                 index_active = []
                 for i in range(mu_s[k].shape[0]):
                     if np.abs(mu_s[k][i].full()) > self.__mu_tresh:
-                        C_active.append(C[k][i,:])
+                        C_active.append(S['C'][k][i,:])
                         index_active.append(i)
-                # if 'g' in lam_g.keys(): # equality constraints are treated as always active
-                #     for i in range(lam_s[k].shape[0]):
-                #         C_active.append(D[k][i,:])
                 if len(C_active) > 0:
                     C_As.append(ca.horzcat(*C_active).full().T)
                 else:
                     C_As.append(None)
                 self.__indeces_As.append(index_active)
+            S['C_As'] = C_As
+
         else:
-            C_As = None
-            G    = None
+            S['C_As'] = None
+            S['G']    = None
+            S['e']    = None
+            S['r']    = None
             self.__indeces_As = None
 
         # compute hessian of lagrangian
@@ -316,7 +323,7 @@ class Pocp(object):
         M = self.__nx + self.__nu
         if 'us' in self.__vars:
             M += self.__ns
-        Hlag = [H[i*M:(i+1)*M,i*M:(i+1)*M] for i in range(self.__N)]
+        S['H'] = [H[i*M:(i+1)*M,i*M:(i+1)*M] for i in range(self.__N)]
 
         # add slack regularization
         # if 'us' in self.__vars:
@@ -330,11 +337,11 @@ class Pocp(object):
 
         # compute cost function gradient
         if self.__h is not None:
-            jl = [- ca.mtimes(lam_g['h',i].T,C[i]) for i in range(self.__N)]
+            S['q'] = [- ca.mtimes(lam_g['h',i].T,S['C'][i]) for i in range(self.__N)]
         else:
-            jl = [np.zeros((1,self.__nx+self.__nu)) for i in range(self.__N)]
+            S['q'] = [np.zeros((1,self.__nx+self.__nu)) for i in range(self.__N)]
 
-        return Hlag, jl, A, B, C_As, G
+        return S
 
     def __construct_sensitivity_funcs(self):
 

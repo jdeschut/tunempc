@@ -209,8 +209,8 @@ model.p = []
 # model.z = z
 model.name = 'evaporation_process'
 
-if INEQ_CONSTR:
-    model.con_h_expr = tuner.sys['h'](tuner.sys['vars']['x'], tuner.sys['vars']['u'])
+# if INEQ_CONSTR:
+#     model.con_h_expr = tuner.sys['h'](tuner.sys['vars']['x'], tuner.sys['vars']['u'])
 
 if COST_TYPE == 'external':
     if MPC_TYPE == 'economic':
@@ -249,15 +249,19 @@ elif COST_TYPE == 'linear_ls':
 
 ocp.cost.cost_type_e = 'LINEAR_LS'
 
-
 # initial condition
 ocp.constraints.x0 = xref
 
 # set inequality constraints
 if INEQ_CONSTR:
     ocp.constraints.constr_type = 'BGH'
-    ocp.constraints.lh = np.zeros((5,))
-    ocp.constraints.uh = 1e15*np.ones((5,))
+    C = S['C'][0][:,:nx]
+    D = S['C'][0][:,nx:]
+    lg = -S['e'][0] + ct.mtimes(C,xref).full() + ct.mtimes(D,uref).full()
+    ocp.constraints.lg = np.squeeze(lg)
+    ocp.constraints.ug = 1e15*np.ones((5,))
+    ocp.constraints.C  = C
+    ocp.constraints.D  = D
 
 # terminal constraint
 if TERMINAL_CONSTR:

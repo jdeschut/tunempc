@@ -175,21 +175,29 @@ ctrls['tracking'] = tuner.create_mpc('tracking',N = N, tuning = tuningTn)
 ctrls['tuned'] = tuner.create_mpc('tuned',N = N)
 
 
+# ======================
+# OPTIONS
+# ======================
 COST_TYPE = 'linear_ls'
 MPC_TYPE = 'tuned'
-TERMINAL_CONSTR = True
+TERMINAL_CONSTR = False
 INEQ_CONSTR = True
 N = 200
+Nsim = 30
+dP2 = 10.0 # initial perturbation
+#alpha = [1.0]
+#log = clt.check_equivalence(ctrls, objective(x,u,data), sys['h'], wsol['x',0], ca.vertcat(0.0, dP2), alpha)
 
+# ======================
+# ACADOS MODEL
+# ======================
 import os
 os.system('rm *.json')
 os.system('rm -rf c_generated_code')
 ode = ca.Function('ode',[x.cat,u.cat],[dynamics(x,u,data)[1]['ode']])
-
 from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver, AcadosSimSolver
 xref = np.squeeze(wsol['x',0].full())
 uref = np.squeeze(wsol['u',0].full())
-
 model = AcadosModel()
 xdot = ca.MX.sym('xdot',tuner.sys['vars']['x'].shape[0])
 model.xdot = xdot
@@ -210,12 +218,15 @@ if COST_TYPE == 'external':
     elif MPC_TYPE == 'tuned':
         w = ca.vertcat(tuner.sys['vars']['x'] - xref, tuner.sys['vars']['u']-uref)
         model.cost_expr_ext_cost = 0.5*ct.mtimes(ct.mtimes(w.T, tuner.S['Hc'][0].full()), w) + ct.mtimes(q[0],w)
+
+# ======================
+# ACADOS OCP
+# ======================
+
 ocp = AcadosOcp()
 ocp.model = model
-
 ny = nx + nu
 ny_e = nx
-N = N
 
 # set dimensions
 ocp.dims.N = N
@@ -254,34 +265,47 @@ if TERMINAL_CONSTR:
     ocp.constraints.ubx_e = xref
     ocp.constraints.Jbx_e = np.eye(nx)
 
-
 ocp.solver_options.qp_solver = 'FULL_CONDENSING_QPOASES' # PARTIAL_CONDENSING_HPIPM
 if COST_TYPE == 'linear_ls':
     ocp.solver_options.hessian_approx = 'GAUSS_NEWTON'
 ocp.solver_options.integrator_type = 'IRK'
 ocp.solver_options.nlp_solver_type = 'SQP' # SQP_RTI
 ocp.solver_options.qp_solver_cond_N = 2 # ???
-ocp.solver_options.print_level = 0
-
+ocp.solver_options.print_level = 1
+ocp.solver_options.sim_method_num_steps = 20
+# ocp.solver_options.nlp_solver_max_iter = 30
+# ocp.solver_options.nlp_solver_step_length = 0.9
 # set prediction horizon
 ocp.solver_options.tf = N
 
 acados_ocp_solver = AcadosOcpSolver(ocp, json_file = 'acados_ocp_' + model.name + '.json')
 acados_integrator = AcadosSimSolver(ocp, json_file = 'acados_ocp_' + model.name + '.json')
 
-simX = np.ndarray((N+1, nx))
-simU = np.ndarray((N, nu))
+simX = np.ndarray((Nsim+1, nx))
+simU = np.ndarray((Nsim, nu))
 
 xcurrent = xref
-simX[0,:] = xcurrent
 
 # initialize
 for i in range(N):
     acados_ocp_solver.set(i, "x", xref)
     acados_ocp_solver.set(i, "u", uref)
 
+if TERMINAL_CONSTR:
+    acados_ocp_solver.set(N, "lbx", xref)
+    acados_ocp_solver.set(N, "ubx", xref)
+
+# pre-solve for warm-starting:
+acados_ocp_solver.set(0, "lbx", xcurrent)
+acados_ocp_solver.set(0, "ubx", xcurrent)
+status = acados_ocp_solver.solve()
+
+# perturb inital state
+xcurrent += np.array([0.0, dP2])
+simX[0,:] = xcurrent
+
 # closed loop
-for i in range(N):
+for i in range(Nsim):
     print(i)
     # solve ocp
     acados_ocp_solver.set(0, "lbx", xcurrent)
@@ -289,8 +313,8 @@ for i in range(N):
 
     status = acados_ocp_solver.solve()
 
-    if status != 0:
-        raise Exception('acados acados_ocp_solver returned status {}. Exiting.'.format(status))
+    # if status != 0:
+    #     raise Exception('acados acados_ocp_solver returned status {}. Exiting.'.format(status))
 
     simU[i,:] = acados_ocp_solver.get(0, "u")
 
@@ -304,29 +328,27 @@ for i in range(N):
 
     # update state
     xcurrent = acados_integrator.get("x")
-    if i == 0:
-        xcurrent = xcurrent + np.array([0.0, 1.0])
     simX[i+1,:] = xcurrent
 
 
 for i in range(nu):
     plt.subplot(nx+nu, 1, i+1)
-    plt.step(range(N), simU[:,i], color='r')
+    plt.step(range(Nsim), simU[:,i], color='r', where='post')
     if i == 0:
         plt.title('closed-loop simulation')
-    plt.hlines(400.0, 0, N-1, linestyles='dashed', alpha=0.7)
+    plt.hlines(400.0, 0, Nsim-1, linestyles='dashed', alpha=0.7)
     plt.ylabel('$u$')
     plt.xlabel('$t$')
     plt.grid()
 
 for i in range(nx):
     plt.subplot(nx+nu, 1, i+nu+1)
-    plt.plot(range(N+1), simX[:,i], label='true')
+    plt.plot(range(Nsim+1), simX[:,i], label='true')
     if i == 0:
-        plt.hlines(25.0, 0, N, linestyles='dashed', alpha=0.7)
+        plt.hlines(25.0, 0, Nsim, linestyles='dashed', alpha=0.7)
     if i == 1:
-        plt.hlines(40.0, 0, N, linestyles='dashed', alpha=0.7)
-        plt.hlines(80.0, 0, N, linestyles='dashed', alpha=0.7)
+        plt.hlines(40.0, 0, Nsim, linestyles='dashed', alpha=0.7)
+        plt.hlines(80.0, 0, Nsim, linestyles='dashed', alpha=0.7)
     plt.xlabel('$t$')
     plt.grid()
     plt.legend(loc=1)
@@ -334,8 +356,6 @@ for i in range(nx):
     plt.subplots_adjust(left=None, bottom=None, right=None, top=None, hspace=0.4)
 plt.show()
 
-# alpha = [0.1, 0.5, 1.0]
-# log = clt.check_equivalence(ctrls, objective(x,u,data), sys['h'], wsol['x',0], ca.vertcat(0.0, 10.0), alpha)
 
 # # plot feedback controls to check equivalence
 # for name in list(ctrls.keys()):

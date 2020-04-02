@@ -180,13 +180,14 @@ ctrls['tuned'] = tuner.create_mpc('tuned',N = N)
 # ======================
 COST_TYPE = 'linear_ls'
 MPC_TYPE = 'tuned'
-TERMINAL_CONSTR = False
+TERMINAL_CONSTR = True
 INEQ_CONSTR = True
+PLOT_PREDICTION = True
 N = 200
 Nsim = 30
-dP2 = 10.0 # initial perturbation
-#alpha = [1.0]
-#log = clt.check_equivalence(ctrls, objective(x,u,data), sys['h'], wsol['x',0], ca.vertcat(0.0, dP2), alpha)
+dP2 = 0.1 # initial perturbation
+# alpha = [1.0]
+# log = clt.check_equivalence(ctrls, objective(x,u,data), sys['h'], wsol['x',0], ca.vertcat(0.0, dP2), alpha)
 
 # ======================
 # ACADOS MODEL
@@ -295,10 +296,6 @@ for i in range(N):
     acados_ocp_solver.set(i, "x", xref)
     acados_ocp_solver.set(i, "u", uref)
 
-if TERMINAL_CONSTR:
-    acados_ocp_solver.set(N, "lbx", xref)
-    acados_ocp_solver.set(N, "ubx", xref)
-
 # pre-solve for warm-starting:
 acados_ocp_solver.set(0, "lbx", xcurrent)
 acados_ocp_solver.set(0, "ubx", xcurrent)
@@ -317,8 +314,8 @@ for i in range(Nsim):
 
     status = acados_ocp_solver.solve()
 
-    # if status != 0:
-    #     raise Exception('acados acados_ocp_solver returned status {}. Exiting.'.format(status))
+    if status != 0:
+        raise Exception('acados acados_ocp_solver returned status {}. Exiting.'.format(status))
 
     simU[i,:] = acados_ocp_solver.get(0, "u")
 
@@ -334,6 +331,37 @@ for i in range(Nsim):
     xcurrent = acados_integrator.get("x")
     simX[i+1,:] = xcurrent
 
+    # prediction
+    if PLOT_PREDICTION:
+        predX = np.ndarray((N+1, nx))
+        predU = np.ndarray((N, nu))
+        for k in range(N):
+            predX[k,:] = acados_ocp_solver.get(k, "x")
+            predU[k,:] = acados_ocp_solver.get(k, "u")
+        predX[N,:] = acados_ocp_solver.get(N, "x")
+        for k in range(nu):
+            plt.subplot(nx+nu, 1, k+1)
+            plt.step(range(N), predU[:,k], color='r', where='post')
+            if k == 0:
+                plt.title('closed-loop simulation')
+            plt.hlines(400.0, 0, N-1, linestyles='dashed', alpha=0.7)
+            plt.ylabel('$u$')
+            plt.xlabel('$t$')
+            plt.grid()
+
+        for k in range(nx):
+                plt.subplot(nx+nu, 1, k+nu+1)
+                plt.plot(range(N+1), predX[:,k], label='true')
+                if k == 0:
+                    plt.hlines(25.0, 0, N, linestyles='dashed', alpha=0.7)
+                if k == 1:
+                    plt.hlines(40.0, 0, N, linestyles='dashed', alpha=0.7)
+                    plt.hlines(80.0, 0, N, linestyles='dashed', alpha=0.7)
+                plt.xlabel('$t$')
+                plt.grid()
+                plt.legend(loc=1)
+        plt.subplots_adjust(left=None, bottom=None, right=None, top=None, hspace=0.4)
+        plt.show()
 
 for i in range(nu):
     plt.subplot(nx+nu, 1, i+1)

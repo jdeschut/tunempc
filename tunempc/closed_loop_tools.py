@@ -23,10 +23,11 @@
 :author: Jochem De Schutter
 """
 
+import numpy as np
 import matplotlib.pyplot as plt
 from tunempc.logger import Logger
 
-def check_equivalence(controllers, cost, h, x0, dx, alpha):
+def check_equivalence(controllers, cost, h, x0, dx, alpha, flag = 'tunempc'):
 
     """ Check local equivalence of different controllers.
     """
@@ -51,8 +52,12 @@ def check_equivalence(controllers, cost, h, x0, dx, alpha):
 
             # compute feedback law and store results
             print('Compute MPC feedback for controller {}'.format(name))
-            u0 = controllers[name].step(x_init)
-            wsol = controllers[name].w_sol
+            if flag == 'tunempc':
+                u0 = controllers[name].step(x_init)
+                wsol = controllers[name].w_sol
+            elif flag == 'acados':
+                u0 = controllers[name].step_acados(x_init)
+                wsol = controllers[name].w_sol_acados
             log[-1]['u'][name] = wsol['u',:]
             log[-1]['x'][name] = wsol['x',:]
             log[-1]['l'][name] = [cost(wsol['x',k],wsol['u',k]).full()[0][0] for k in range(len(wsol['u',:]))]
@@ -63,7 +68,7 @@ def check_equivalence(controllers, cost, h, x0, dx, alpha):
 
     return log
 
-def closed_loop_sim(controllers, cost, h, F, x0, N):
+def closed_loop_sim(controllers, cost, h, F, x0, N, flag = 'tunempc'):
 
     """ Perform closed-loop simulations for different controllers starting from x0
     """
@@ -85,7 +90,10 @@ def closed_loop_sim(controllers, cost, h, F, x0, N):
 
             # compute feedback law and store results
             print('Compute MPC feedback for controller {}'.format(name))
-            log['u'][name].append(controllers[name].step(log['x'][name][-1]))
+            if flag == 'tunempc':
+                log['u'][name].append(controllers[name].step(log['x'][name][-1]))
+            elif flag == 'acados':
+                log['u'][name].append(controllers[name].step_acados(log['x'][name][-1]))
             log['l'][name].append(cost(log['x'][name][-1], log['u'][name][-1]).full()[0][0])
             log['h'][name].append(h(log['x'][name][-1], log['u'][name][-1]).full())
 

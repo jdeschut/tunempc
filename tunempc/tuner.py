@@ -31,6 +31,7 @@ import tunempc.convexifier as convexifier
 import tunempc.pmpc as pmpc
 import casadi as ca
 import casadi.tools as ct
+import numpy as np
 import copy
 from tunempc.logger import Logger
 
@@ -189,6 +190,99 @@ class Tuner(object):
             mpc = pmpc.Pmpc(N = N, sys = mpc_sys, cost = cost, wref = self.__w_sol, tuning = tuning, lam_g_ref=lam_g0, options=opts)
         
         return mpc
+
+    def create_mpc_acados(self, mpc_type, N, ode, opts = {}, tuning = None, name = 'tunempc'):
+
+        """ Create embeddable MPC controller of user-defined type and horizon
+        for given system dynamics, constraints and cost function.
+        """
+
+        from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver, AcadosSimSolver
+
+        if mpc_type not in ['economic','tuned','tracking']:
+            raise ValueError('Provided MPC type "{}" not supported.'.format(mpc_type))
+
+        # extract reference TODO: periodic and slacks!!!
+        xref = np.squeeze(self.__w_sol['x',0].full())
+        uref = np.squeeze(self.__w_sol['u',0].full())
+
+        # create acados model # TODO: adapt for dae's
+        model = AcadosModel()
+        xdot = ca.MX.sym('xdot',self.__nx)
+        model.xdot = xdot
+        model.f_impl_expr = xdot - ode(self.__sys['vars']['x'], self.__sys['vars']['u'])
+        model.f_expl_expr = xdot
+        model.x = self.__sys['vars']['x']
+        model.u = self.__sys['vars']['u']
+        model.p = []
+        model.name = name
+        # model.con_h_expr = tuner.sys['h'](tuner.sys['vars']['x'], tuner.sys['vars']['u'])
+
+        if mpc_type == 'economic':
+            model.cost_expr_ext_cost = self.__.l(self.__sys['vars']['x'], self.__sys['vars']['u'])
+
+        # create acados ocp
+        ocp = AcadosOcp()
+        ocp.model = model
+        ny = self.__nx + self.__nu
+        ny_e = self.__nx
+
+        # set dimensions
+        ocp.dims.N = N
+
+        # set cost module
+        if mpc_type == 'economic':
+
+            # set cost function type to external (provided in model)
+            ocp.cost.cost_type = 'EXTERNAL'
+        else:
+
+            # set weighting matrices
+            if mpc_type == 'tuned':
+                ocp.cost.W = self.__S['Hc'][0].full()
+            elif mpc_type == 'tracking':
+                ocp.cost.W = tuning['H'][0]
+
+            # set-up linear least squares cost
+            ocp.cost.cost_type = 'LINEAR_LS'
+            ocp.cost.W_e = np.zeros((self.__nx,self.__nx))
+            ocp.cost.Vx = np.zeros((ny, self.__nx))
+            ocp.cost.Vx[:self.__nx,:self.__nx] = np.eye(self.__nx)
+            Vu = np.zeros((ny, self.__nu))
+            Vu[self.__nx:,:] = np.eye(self.__nu)
+            ocp.cost.Vu = Vu
+            ocp.cost.Vx_e = np.eye(self.__nx)
+            ocp.cost.yref  = np.squeeze(
+                ca.vertcat(xref,uref).full() - \
+                ct.mtimes(np.linalg.inv(ocp.cost.W),self.__S['q'][0].T).full() # gradient term
+                )
+            ocp.cost.yref_e = np.zeros((ny_e, ))
+
+        # initial condition
+        ocp.constraints.x0 = xref
+
+        # set inequality constraints
+        ocp.constraints.constr_type = 'BGH'
+        C = self.__S['C'][0][:,:self.__nx]
+        D = self.__S['C'][0][:,self.__nx:]
+        lg = -self.__S['e'][0] + ct.mtimes(C,xref).full() + ct.mtimes(D,uref).full()
+        ocp.constraints.lg = np.squeeze(lg)
+        ocp.constraints.ug = 1e15*np.ones((lg.shape[0],))
+        ocp.constraints.C  = C
+        ocp.constraints.D  = D
+
+        # terminal constraint
+        ocp.constraints.lbx_e = xref
+        ocp.constraints.ubx_e = xref
+        ocp.constraints.Jbx_e = np.eye(self.__nx)
+
+        for option in list(opts.keys()):
+            setattr(ocp.solver_options, option, opts[option])
+
+        acados_ocp_solver = AcadosOcpSolver(ocp, json_file = 'acados_ocp_' + model.name + '.json')
+        acados_integrator = AcadosSimSolver(ocp, json_file = 'acados_ocp_' + model.name + '.json')
+
+        return acados_ocp_solver, acados_integrator
 
     def __tracking_cost(self, nw):
 

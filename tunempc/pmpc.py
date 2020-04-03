@@ -116,6 +116,7 @@ class Pmpc(object):
 
         # periodic indexing
         self.__index = 0
+        self.__index_acados = 0
 
         # create periodic reference
         assert wref   != None, 'Provide reference trajectory!'
@@ -409,6 +410,38 @@ class Pmpc(object):
 
         return self.__w_sol['u',0]
 
+    def step_acados(self, x0):
+
+        # reset periodic indexing if necessary
+        self.__index_acados = self.__index_acados%len(self.__ref)
+
+        # format x0
+        x0 = np.squeeze(x0.full())
+
+        # update NLP parameters
+        self.__acados_ocp_solver.set(0, "lbx", x0)
+        self.__acados_ocp_solver.set(0, "ubx", x0)
+
+        # update reference and tuning matrices # TODO
+        xref = np.squeeze(self.__ref[0][:self.__nx])
+        uref = np.squeeze(self.__ref[0][self.__nx: self.__nx + self.__nu])
+
+        # solve
+        status = self.__acados_ocp_solver.solve()
+        if status != 0:
+            raise Exception('acados integrator returned status {}. Exiting.'.format(status))
+
+        # save solution
+        self.__w_sol_acados = self.__w(0.0)
+        for i in range(self.__N): # TODO: slacks
+            self.__w_sol_acados['x',i] = self.__acados_ocp_solver.get(i,"x")
+            self.__w_sol_acados['u',i] = self.__acados_ocp_solver.get(i,"u")
+
+        # update initial guess TODO: shifting
+        self.__index_acados += 1
+
+        return self.__acados_ocp_solver.get(0, "u")
+
     def generate(self, ode, name = 'tunempc', opts = {}):
 
         """ Create embeddable NLP solver
@@ -492,11 +525,15 @@ class Pmpc(object):
         for option in list(opts.keys()):
             setattr(ocp.solver_options, option, opts[option])
 
-        acados_ocp_solver = AcadosOcpSolver(ocp, json_file = 'acados_ocp_' + model.name + '.json')
-        acados_integrator = AcadosSimSolver(ocp, json_file = 'acados_ocp_' + model.name + '.json')
+        self.__acados_ocp_solver = AcadosOcpSolver(ocp, json_file = 'acados_ocp_' + model.name + '.json')
+        self.__acados_integrator = AcadosSimSolver(ocp, json_file = 'acados_ocp_' + model.name + '.json')
 
-        return acados_ocp_solver, acados_integrator
+        # set initial guess TODO: make periodic
+        for i in range(self.__N):
+            self.__acados_ocp_solver.set(i, "x", xref)
+            self.__acados_ocp_solver.set(i, "u", uref)
 
+        return self.__acados_ocp_solver, self.__acados_integrator
 
     def __create_reference(self, wref, tuning, lam_g_ref):
 
@@ -619,6 +656,7 @@ class Pmpc(object):
     def reset(self):
 
         self.__index = 0
+        self.__index_acados = 0
         self.__initialize_log()
         self.__set_initial_guess()
 
@@ -700,3 +738,15 @@ class Pmpc(object):
     @property
     def index(self):
         return self.__index
+
+    @property
+    def acados_ocp_solver(self):
+        return self.__acados_ocp_solver
+
+    @property
+    def acados_integrator(self):
+        return self.__acados_integrator
+
+    @property
+    def w_sol_acados(self):
+        return self.__w_sol_acados

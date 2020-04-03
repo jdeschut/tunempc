@@ -157,7 +157,7 @@ wsol = tuner.solve_ocp(w0)
 Hc = tuner.convexify(rho = 1e-3, force = False, solver='mosek')
 
 # nmpc horizon length
-N = 20
+N = 200
 
 # gradient
 S  = tuner.S
@@ -174,142 +174,14 @@ ctrls['tracking'] = tuner.create_mpc('tracking',N = N, tuning = tuningTn)
 # tuned tracking mpc controller
 ctrls['tuned'] = tuner.create_mpc('tuned',N = N)
 
-# ======================
-# OPTIONS
-# ======================
-import os
-os.system('rm -rf c_generated_code')
+alpha = [0.0, 0.1, 0.5, 1.0]
+dP2 = 10.0
+log = clt.check_equivalence(ctrls, objective(x,u,data), sys['h'], wsol['x',0], ca.vertcat(0.0, dP2), alpha)
 
-PLOT_PREDICTION = True
-Nsim = 1
-dP2 = 1.0 # initial perturbation
-h = 1.0 # sampling time - [s]
-# ode
-ode = ca.Function('ode',[x.cat,u.cat],[dynamics(x,u,data)[1]['ode']])
-
-# ...
-opts = {}
-opts['qp_solver'] = 'FULL_CONDENSING_QPOASES' # PARTIAL_CONDENSING_HPIPM
-opts['hessian_approx'] = 'GAUSS_NEWTON'
-opts['integrator_type'] = 'IRK'
-opts['nlp_solver_type'] = 'SQP' # SQP_RTI
-opts['qp_solver_cond_N'] = 1 # ???
-opts['print_level'] = 0
-opts['sim_method_num_steps'] = 20
-opts['tf'] = N*h
-# opts['nlp_solver_max_iter'] = 30
-# opts['nlp_solver_step_length'] = 0.9
-
-acados_ocp_solver, acados_integrator = ctrls['tuned'].generate(ode, opts = opts, name = 'evaporation_process')
-
-simX = np.ndarray((Nsim+1, nx))
-simU = np.ndarray((Nsim, nu))
-
-xref = np.squeeze(wsol['x',0].full())
-uref = np.squeeze(wsol['u',0].full())
-xcurrent = xref
-
-# initialize
-for i in range(N):
-    acados_ocp_solver.set(i, "x", xref)
-    acados_ocp_solver.set(i, "u", uref)
-
-# pre-solve for warm-starting:
-acados_ocp_solver.set(0, "lbx", xcurrent)
-acados_ocp_solver.set(0, "ubx", xcurrent)
-status = acados_ocp_solver.solve()
-
-# perturb inital state
-xcurrent += np.array([0.0, dP2])
-simX[0,:] = xcurrent
-
-# closed loop
-for i in range(Nsim):
-    print(i)
-    # solve ocp
-    acados_ocp_solver.set(0, "lbx", xcurrent)
-    acados_ocp_solver.set(0, "ubx", xcurrent)
-
-    status = acados_ocp_solver.solve()
-
-    if status != 0:
-        raise Exception('acados acados_ocp_solver returned status {}. Exiting.'.format(status))
-
-    simU[i,:] = acados_ocp_solver.get(0, "u")
-
-    # simulate system
-    acados_integrator.set("x", xcurrent)
-    acados_integrator.set("u", simU[i,:])
-
-    status = acados_integrator.solve()
-    if status != 0:
-        raise Exception('acados integrator returned status {}. Exiting.'.format(status))
-
-    # update state
-    xcurrent = acados_integrator.get("x")
-    simX[i+1,:] = xcurrent
-
-    # prediction
-    if PLOT_PREDICTION:
-        predX = np.ndarray((N+1, nx))
-        predU = np.ndarray((N, nu))
-        for k in range(N):
-            predX[k,:] = acados_ocp_solver.get(k, "x")
-            predU[k,:] = acados_ocp_solver.get(k, "u")
-        predX[N,:] = acados_ocp_solver.get(N, "x")
-        for k in range(nu):
-            plt.subplot(nx+nu, 1, k+1)
-            plt.step(range(N), predU[:,k], color='r', where='post')
-            if k == 0:
-                plt.title('closed-loop simulation')
-            # plt.hlines(400.0, 0, N-1, linestyles='dashed', alpha=0.7)
-            plt.ylabel('$u$')
-            plt.xlabel('$t$')
-            plt.grid()
-
-        for k in range(nx):
-                plt.subplot(nx+nu, 1, k+nu+1)
-                plt.plot(range(N+1), predX[:,k], label='true')
-                # if k == 0:
-                #     plt.hlines(25.0, 0, N, linestyles='dashed', alpha=0.7)
-                # if k == 1:
-                #     plt.hlines(40.0, 0, N, linestyles='dashed', alpha=0.7)
-                #     plt.hlines(80.0, 0, N, linestyles='dashed', alpha=0.7)
-                plt.xlabel('$t$')
-                plt.grid()
-                plt.legend(loc=1)
-        plt.subplots_adjust(left=None, bottom=None, right=None, top=None, hspace=0.4)
-        plt.show()
-
-for i in range(nu):
-    plt.subplot(nx+nu, 1, i+1)
-    plt.step(range(Nsim), simU[:,i], color='r', where='post')
-    if i == 0:
-        plt.title('closed-loop simulation')
-    plt.hlines(400.0, 0, Nsim-1, linestyles='dashed', alpha=0.7)
-    plt.ylabel('$u$')
-    plt.xlabel('$t$')
-    plt.grid()
-
-for i in range(nx):
-    plt.subplot(nx+nu, 1, i+nu+1)
-    plt.plot(range(Nsim+1), simX[:,i], label='true')
-    if i == 0:
-        plt.hlines(25.0, 0, Nsim, linestyles='dashed', alpha=0.7)
-    if i == 1:
-        plt.hlines(40.0, 0, Nsim, linestyles='dashed', alpha=0.7)
-        plt.hlines(80.0, 0, Nsim, linestyles='dashed', alpha=0.7)
-    plt.xlabel('$t$')
-    plt.grid()
-    plt.legend(loc=1)
-
-    plt.subplots_adjust(left=None, bottom=None, right=None, top=None, hspace=0.4)
+# plot feedback controls to check equivalence
+for name in list(ctrls.keys()):
+    for i in range(nu):
+        plt.figure(i)
+        plt.plot(alpha, [log[j]['u'][name][0][i] for j in range(len(alpha))])
+        plt.legend(list(ctrls.keys()))
 plt.show()
-
-
-# # plot feedback controls to check equivalence
-# for name in list(ctrls.keys()):
-#     for i in range(nu):
-#         plt.figure(i)
-#         plt.plot(alpha, [log[j]['u'][name][0][i] for j in range(len(alpha))])
-#         plt.legend(list(ctrls.keys()))

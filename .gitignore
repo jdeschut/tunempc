@@ -1,12 +1,14 @@
+
+# python
 *.pyc
+
+# output files
 *.jpg
 *.eps
 *.csv
 *.xml
 *.log
-*.awes
 *.p
-*.awe
 .idea/
 *.c
 .pytest_cache/
@@ -15,6 +17,8 @@ build/
 *.rst
 *.pkl
 .vscode/
+
+# tex
 *.aux
 *.fdb_latexmk
 *.fls
@@ -32,3 +36,7 @@ figures/
 *.bbl
 *.blg
 *.dvi
+
+# acados
+*.json
+c_generated_code/

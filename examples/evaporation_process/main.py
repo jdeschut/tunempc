@@ -177,112 +177,39 @@ ctrls['tuned'] = tuner.create_mpc('tuned',N = N)
 # ======================
 # OPTIONS
 # ======================
-COST_TYPE = 'linear_ls'
-TERMINAL_CONSTR = True
-INEQ_CONSTR = True
-PLOT_PREDICTION = True
-N = 200
-Nsim = 1
-dP2 = 1.0 # initial perturbation
-# alpha = [1.0]
-# log = clt.check_equivalence(ctrls, objective(x,u,data), sys['h'], wsol['x',0], ca.vertcat(0.0, dP2), alpha)
-
-# ======================
-# ACADOS MODEL
-# ======================
 import os
 os.system('rm *.json')
 os.system('rm -rf c_generated_code')
+
+PLOT_PREDICTION = False
+N = 20
+Nsim = 30
+dP2 = 1.0 # initial perturbation
+h = 1.0 # sampling time - [s]
+# ode
 ode = ca.Function('ode',[x.cat,u.cat],[dynamics(x,u,data)[1]['ode']])
-from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver, AcadosSimSolver
-xref = np.squeeze(wsol['x',0].full())
-uref = np.squeeze(wsol['u',0].full())
-model = AcadosModel()
-xdot = ca.MX.sym('xdot',tuner.sys['vars']['x'].shape[0])
-model.xdot = xdot
-model.f_impl_expr = xdot - ode(tuner.sys['vars']['x'], tuner.sys['vars']['u'])
-model.f_expl_expr = xdot
-model.x = tuner.sys['vars']['x']
-model.u = tuner.sys['vars']['u']
-model.p = []
-# model.z = z
-model.name = 'evaporation_process'
 
-# if INEQ_CONSTR:
-#     model.con_h_expr = tuner.sys['h'](tuner.sys['vars']['x'], tuner.sys['vars']['u'])
-
-if COST_TYPE == 'external':
-    model.cost_expr_ext_cost = tuner.l(tuner.sys['vars']['x'], tuner.sys['vars']['u'])
-
-# ======================
-# ACADOS OCP
-# ======================
-
-ocp = AcadosOcp()
-ocp.model = model
-ny = nx + nu
-ny_e = nx
-
-# set dimensions
-ocp.dims.N = N
-
-# set cost module
-if COST_TYPE == 'external':
-    ocp.cost.cost_type = 'EXTERNAL'
-elif COST_TYPE == 'linear_ls':
-    ocp.cost.cost_type = 'LINEAR_LS'
-    ocp.cost.W = tuner.S['Hc'][0].full()
-    ocp.cost.W_e = np.zeros((nx,nx))
-    ocp.cost.Vx = np.zeros((ny, nx))
-    ocp.cost.Vx[:nx,:nx] = np.eye(nx)
-    Vu = np.zeros((ny, nu))
-    Vu[nx:,:] = np.eye(nu)
-    ocp.cost.Vu = Vu
-    ocp.cost.Vx_e = np.eye(nx)
-    ocp.cost.yref  = np.squeeze(ca.vertcat(xref,uref).full() - ct.mtimes(np.linalg.inv(S['Hc'][0]),S['q'][0].T).full())
-    ocp.cost.yref_e = np.zeros((ny_e, ))
-
-ocp.cost.cost_type_e = 'LINEAR_LS'
-
-# initial condition
-ocp.constraints.x0 = xref
-
-# set inequality constraints
-if INEQ_CONSTR:
-    ocp.constraints.constr_type = 'BGH'
-    C = S['C'][0][:,:nx]
-    D = S['C'][0][:,nx:]
-    lg = -S['e'][0] + ct.mtimes(C,xref).full() + ct.mtimes(D,uref).full()
-    ocp.constraints.lg = np.squeeze(lg)
-    ocp.constraints.ug = 1e15*np.ones((5,))
-    ocp.constraints.C  = C
-    ocp.constraints.D  = D
-
-# terminal constraint
-if TERMINAL_CONSTR:
-    ocp.constraints.lbx_e = xref
-    ocp.constraints.ubx_e = xref
-    ocp.constraints.Jbx_e = np.eye(nx)
-
-ocp.solver_options.qp_solver = 'FULL_CONDENSING_QPOASES' # PARTIAL_CONDENSING_HPIPM
-if COST_TYPE == 'linear_ls':
-    ocp.solver_options.hessian_approx = 'GAUSS_NEWTON'
-ocp.solver_options.integrator_type = 'IRK'
-ocp.solver_options.nlp_solver_type = 'SQP' # SQP_RTI
-ocp.solver_options.qp_solver_cond_N = 2 # ???
-ocp.solver_options.print_level = 1
-ocp.solver_options.sim_method_num_steps = 20
-# ocp.solver_options.nlp_solver_max_iter = 30
-# ocp.solver_options.nlp_solver_step_length = 0.9
-# set prediction horizon
-ocp.solver_options.tf = N
-
-acados_ocp_solver = AcadosOcpSolver(ocp, json_file = 'acados_ocp_' + model.name + '.json')
-acados_integrator = AcadosSimSolver(ocp, json_file = 'acados_ocp_' + model.name + '.json')
+# ...
+opts = {}
+opts['qp_solver'] = 'FULL_CONDENSING_QPOASES' # PARTIAL_CONDENSING_HPIPM
+opts['hessian_approx'] = 'GAUSS_NEWTON'
+opts['integrator_type'] = 'IRK'
+opts['nlp_solver_type'] = 'SQP' # SQP_RTI
+opts['qp_solver_cond_N'] = 2 # ???
+opts['print_level'] = 0
+opts['sim_method_num_steps'] = 20
+opts['tf'] = N*h
+# opts['nlp_solver_max_iter'] = 30
+# opts['nlp_solver_step_length'] = 0.9
+acados_ocp_solver, acados_integrator = tuner.create_mpc_acados(
+    'tuned', N,  ode, opts = opts, name = 'evaporation_process'
+    )
 
 simX = np.ndarray((Nsim+1, nx))
 simU = np.ndarray((Nsim, nu))
 
+xref = np.squeeze(wsol['x',0].full())
+uref = np.squeeze(wsol['u',0].full())
 xcurrent = xref
 
 # initialize

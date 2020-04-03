@@ -125,6 +125,10 @@ class Pmpc(object):
         # initialize log
         self.__initialize_log()
 
+        # initialize acados solvers
+        self.__acados_ocp_solver = None
+        self.__acados_integrator = None
+
         # solver initial guess
         self.__set_initial_guess()
 
@@ -716,6 +720,14 @@ class Pmpc(object):
 
         # initial guess for multipliers
         self.__lam_g0 = self.__g(self.__ref_du[self.__index])
+
+        # acados solver initializationr at reference TODO: make periodic
+        xref = np.squeeze(self.__ref[0][:self.__nx])
+        uref = np.squeeze(self.__ref[0][self.__nx: self.__nx + self.__nu])
+        if self.__acados_ocp_solver is not None:
+            for i in range(self.__N):
+                self.__acados_ocp_solver.set(i, "x", xref)
+                self.__acados_ocp_solver.set(i, "u", uref)
 
         return None
 

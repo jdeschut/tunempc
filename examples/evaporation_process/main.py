@@ -157,7 +157,7 @@ wsol = tuner.solve_ocp(w0)
 Hc = tuner.convexify(rho = 1e-3, force = False, solver='mosek')
 
 # nmpc horizon length
-N = 200
+N = 20
 
 # gradient
 S  = tuner.S
@@ -178,11 +178,9 @@ ctrls['tuned'] = tuner.create_mpc('tuned',N = N)
 # OPTIONS
 # ======================
 import os
-os.system('rm *.json')
 os.system('rm -rf c_generated_code')
 
 PLOT_PREDICTION = True
-N = 20
 Nsim = 1
 dP2 = 1.0 # initial perturbation
 h = 1.0 # sampling time - [s]
@@ -201,9 +199,8 @@ opts['sim_method_num_steps'] = 20
 opts['tf'] = N*h
 # opts['nlp_solver_max_iter'] = 30
 # opts['nlp_solver_step_length'] = 0.9
-acados_ocp_solver, acados_integrator = tuner.create_mpc_acados(
-    'tuned', N,  ode, opts = opts, name = 'evaporation_process'
-    )
+
+acados_ocp_solver, acados_integrator = ctrls['tuned'].generate(ode, opts = opts, name = 'evaporation_process')
 
 simX = np.ndarray((Nsim+1, nx))
 simU = np.ndarray((Nsim, nu))

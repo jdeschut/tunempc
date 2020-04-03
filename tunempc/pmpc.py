@@ -74,6 +74,9 @@ class Pmpc(object):
         else:
             self.__gnl = None
 
+        # store system sensitivities around steady state
+        self.__S = sys['S']
+
         self.__cost = cost
 
         # set options
@@ -405,6 +408,95 @@ class Pmpc(object):
             )
 
         return self.__w_sol['u',0]
+
+    def generate(self, ode, name = 'tunempc', opts = {}):
+
+        """ Create embeddable NLP solver
+        """
+
+        from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver, AcadosSimSolver
+
+        # extract reference TODO: periodic and slacks!!!
+        ref = self.__ref
+        xref = np.squeeze(self.__ref[0][:self.__nx])
+        uref = np.squeeze(self.__ref[0][self.__nx: self.__nx + self.__nu])
+
+        # create acados model # TODO: adapt for dae's
+        model = AcadosModel()
+        xdot = ca.MX.sym('xdot',self.__nx)
+        model.xdot = xdot
+        model.f_impl_expr = xdot - ode(self.__vars['x'], self.__vars['u'])
+        model.f_expl_expr = xdot
+        model.x = self.__vars['x']
+        model.u = self.__vars['u']
+        model.p = []
+        model.name = name
+        # model.con_h_expr = tuner.sys['h'](tuner.vars['x'], tuner.vars['u'])
+
+        if self.__type == 'economic':
+            model.cost_expr_ext_cost = self.__cost(self.__vars['x'], self.__vars['u'])
+
+        # create acados ocp
+        ocp = AcadosOcp()
+        ocp.model = model
+        ny = self.__nx + self.__nu
+        ny_e = self.__nx
+
+        # set dimensions
+        ocp.dims.N = self.__N
+
+        # set cost module
+        if self.__type == 'economic':
+
+            # set cost function type to external (provided in model)
+            ocp.cost.cost_type = 'EXTERNAL'
+        else:
+
+            # set weighting matrices
+            if self.__type == 'tracking':
+                ocp.cost.W = self.__Href[0][0].full()
+
+            # set-up linear least squares cost
+            ocp.cost.cost_type = 'LINEAR_LS'
+            ocp.cost.W_e = np.zeros((self.__nx,self.__nx))
+            ocp.cost.Vx = np.zeros((ny, self.__nx))
+            ocp.cost.Vx[:self.__nx,:self.__nx] = np.eye(self.__nx)
+            Vu = np.zeros((ny, self.__nu))
+            Vu[self.__nx:,:] = np.eye(self.__nu)
+            ocp.cost.Vu = Vu
+            ocp.cost.Vx_e = np.eye(self.__nx)
+            ocp.cost.yref  = np.squeeze(
+                ca.vertcat(xref,uref).full() - \
+                ct.mtimes(np.linalg.inv(ocp.cost.W),self.__qref[0][0].T).full() # gradient term
+                )
+            ocp.cost.yref_e = np.zeros((ny_e, ))
+
+        # initial condition
+        ocp.constraints.x0 = xref
+
+        # set inequality constraints
+        ocp.constraints.constr_type = 'BGH'
+        C = self.__S['C'][0][:,:self.__nx]
+        D = self.__S['C'][0][:,self.__nx:]
+        lg = -self.__S['e'][0] + ct.mtimes(C,xref).full() + ct.mtimes(D,uref).full()
+        ocp.constraints.lg = np.squeeze(lg)
+        ocp.constraints.ug = 1e15*np.ones((lg.shape[0],))
+        ocp.constraints.C  = C
+        ocp.constraints.D  = D
+
+        # terminal constraint
+        ocp.constraints.lbx_e = xref
+        ocp.constraints.ubx_e = xref
+        ocp.constraints.Jbx_e = np.eye(self.__nx)
+
+        for option in list(opts.keys()):
+            setattr(ocp.solver_options, option, opts[option])
+
+        acados_ocp_solver = AcadosOcpSolver(ocp, json_file = 'acados_ocp_' + model.name + '.json')
+        acados_integrator = AcadosSimSolver(ocp, json_file = 'acados_ocp_' + model.name + '.json')
+
+        return acados_ocp_solver, acados_integrator
+
 
     def __create_reference(self, wref, tuning, lam_g_ref):
 

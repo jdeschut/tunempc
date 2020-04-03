@@ -61,10 +61,10 @@ wsol = tuner.solve_ocp(w0 = user_input['w0'])
 
 # convexify stage cost matrices
 Hc   = tuner.convexify(solver='mosek')
-
-# extract OCP sensitivities at optimal solution
-[Hlag, q, A, B, C_As, D] = tuner.pocp.get_sensitivities()
-
+S    = tuner.S
+test = S['q'][0] - ct.mtimes(ct.mtimes(np.linalg.inv(S['Hc'][0]), S['Hc'][0]), S['q'][0].T).T
+print(test)
+import ipdb; ipdb.set_trace()
 # set-up open-loop scenario
 Nmpc  = 20
 alpha_steps = 20
@@ -102,12 +102,12 @@ ctrls = {}
 ctrls['EMPC'] = tuner.create_mpc('economic', Nmpc,opts=opts)
 
 # standard tracking MPC
-tuningTn = {'H': [np.diag((nx+nu)*[1]+sys['vars']['us'].shape[0]*[0.0])]*user_input['p'], 'q': q}
+tuningTn = {'H': [np.diag((nx+nu)*[1]+sys['vars']['us'].shape[0]*[0.0])]*user_input['p'], 'q': S['q']}
 ctrls['TMPC-1'] = tuner.create_mpc('tracking', Nmpc, tuning = tuningTn, opts = opts)
 
 # manually tuned tracking MPC
 Ht2 = [np.diag([0.1,0.1,0.1, 1.0, 1.0, 1.0, 1.0e3, 1.0, 100.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0])]*user_input['p']
-tuningTn2 = {'H': Ht2, 'q': q}
+tuningTn2 = {'H': Ht2, 'q': S['q']}
 ctrls['TMPC-2'] = tuner.create_mpc('tracking', Nmpc, tuning = tuningTn2, opts= opts)
 
 # tuned tracking MPC

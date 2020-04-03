@@ -115,7 +115,7 @@ w0['u'] = 2*np.pi/T
 
 wsol = tuner.solve_ocp(w0 = w0.cat)
 Hc   = tuner.convexify(solver='mosek')
-[H, q, _, _, _, _]  = tuner.pocp.get_sensitivities()
+S    = tuner.S
 
 # add projection operator for terminal constraint
 sys = tuner.sys
@@ -135,7 +135,7 @@ opts['ipopt_presolve'] = True
 ctrlE = tuner.create_mpc('economic', N, opts=opts)
 
 # normal tracking mpc controller
-tuningTn = {'H': [np.diag([1.0, 1.0, 1.0, 1.0, 1.0])]*N, 'q': q}
+tuningTn = {'H': [np.diag([1.0, 1.0, 1.0, 1.0, 1.0])]*N, 'q': S['q']}
 ctrlTn = tuner.create_mpc('tracking', N, opts=opts, tuning = tuningTn)
 
 # tuned tracking mpc controller

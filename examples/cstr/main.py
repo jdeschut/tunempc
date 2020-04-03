@@ -72,9 +72,7 @@ tuner = tunempc.Tuner(
 wsol = tuner.solve_ocp(w0 = cstr.initial_guess())
 lOpt = cost(wsol['x',0], wsol['u',0])
 Hc   = tuner.convexify()
-
-# extract OCP sensitivities at optimal solution
-[Hlag, q, A, B, C_As, G] = tuner.pocp.get_sensitivities()
+S    = tuner.S
 
 # prediction time grid
 tgrid = [Ts*k for k in range(N)]
@@ -88,7 +86,7 @@ opts = {'ipopt_presolve': False, 'slack_flag': 'active'}
 ctrls['economic'] = tuner.create_mpc('economic',N, opts=opts)
 
 # normal tracking mpc controller
-tuningTn = {'H': [np.diag([0.2, 1.0, 0.5, 0.2, 0.5, 0.5])], 'q': q}
+tuningTn = {'H': [np.diag([0.2, 1.0, 0.5, 0.2, 0.5, 0.5])], 'q': S['q']}
 ctrls['tracking'] = tuner.create_mpc('tracking', N, opts=opts, tuning=tuningTn)
 
 # tuned tracking mpc controller

@@ -487,7 +487,7 @@ class Pmpc(object):
 
             # set weighting matrices
             if self.__type == 'tracking':
-                ocp.cost.W = self.__Href[0][0].full()
+                ocp.cost.W = self.__Href[0][0]
 
             # set-up linear least squares cost
             ocp.cost.cost_type = 'LINEAR_LS'

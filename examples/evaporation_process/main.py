@@ -195,7 +195,7 @@ for name in list(ctrls.keys()):
         plt.grid(True)
 
 # generate embedded solver
-ACADOS_CODEGENERATE = True
+ACADOS_CODEGENERATE = False
 if ACADOS_CODEGENERATE:
 
     # get system ode

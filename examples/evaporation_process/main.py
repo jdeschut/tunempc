@@ -181,9 +181,9 @@ import os
 os.system('rm *.json')
 os.system('rm -rf c_generated_code')
 
-PLOT_PREDICTION = False
+PLOT_PREDICTION = True
 N = 20
-Nsim = 30
+Nsim = 1
 dP2 = 1.0 # initial perturbation
 h = 1.0 # sampling time - [s]
 # ode
@@ -195,7 +195,7 @@ opts['qp_solver'] = 'FULL_CONDENSING_QPOASES' # PARTIAL_CONDENSING_HPIPM
 opts['hessian_approx'] = 'GAUSS_NEWTON'
 opts['integrator_type'] = 'IRK'
 opts['nlp_solver_type'] = 'SQP' # SQP_RTI
-opts['qp_solver_cond_N'] = 2 # ???
+opts['qp_solver_cond_N'] = 1 # ???
 opts['print_level'] = 0
 opts['sim_method_num_steps'] = 20
 opts['tf'] = N*h

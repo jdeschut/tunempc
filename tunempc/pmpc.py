@@ -730,7 +730,7 @@ class Pmpc(object):
         idx = (self.__index_acados+self.__N)%self.__Nref
 
         # reference
-        xref = np.squeeze(self.__ref[idx+1][:self.__nx], axis = 1)
+        xref = np.squeeze(self.__ref[(idx+1)%self.__Nref][:self.__nx], axis = 1)
         uref = np.squeeze(self.__ref[idx][self.__nx: self.__nx + self.__nu], axis = 1)
         self.__acados_ocp_solver.set(self.__N, "x", xref)
         self.__acados_ocp_solver.set(self.__N-1, "u", uref)

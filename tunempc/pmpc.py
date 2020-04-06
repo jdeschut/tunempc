@@ -730,7 +730,7 @@ class Pmpc(object):
         for i in range(self.__N):
 
             # periodic index
-            idx = (self.__index_acados+i)%len(self.__Nref)
+            idx = (self.__index_acados+i)%self.__Nref
 
             # reference
             xref = np.squeeze(self.__ref[idx][:self.__nx])
@@ -746,10 +746,10 @@ class Pmpc(object):
             self.__acados_ocp_solver.set(i, 'yref', yref)
 
             # update tuning matrix
-            self.__acados_ocp_solver.set(i, 'W', self.__Href[idx][0])
+            self.__acados_ocp_solver.cost_set(i, 'W', self.__Href[idx][0])
 
         # update terminal constraint
-        idx = (self.__index_acados+self.__N)%len(self.__Nref)
+        idx = (self.__index_acados+self.__N)%self.__Nref
         self.__acados_ocp_solver.set(self.__N, 'lbx', np.squeeze(self.__ref[idx][:self.__nx]))
         self.__acados_ocp_solver.set(self.__N, 'ubx', np.squeeze(self.__ref[idx][:self.__nx]))
 
@@ -760,7 +760,7 @@ class Pmpc(object):
         for i in range(self.__N):
 
             # periodic index
-            idx = (self.__index_acados+i)%len(self.__Nref)
+            idx = (self.__index_acados+i)%self.__Nref
 
             # initialize at reference
             xref = np.squeeze(self.__ref[idx][:self.__nx])
@@ -771,7 +771,7 @@ class Pmpc(object):
             self.__acados_ocp_solver.set(i, "u", uref)
 
         # terminal state
-        idx = (self.__index_acados+self.__N)%len(self.__Nref)
+        idx = (self.__index_acados+self.__N)%self.__Nref
         xref = np.squeeze(self.__ref[idx][:self.__nx])
         self.__acados_ocp_solver.set(self.__N, "x", xref)
 

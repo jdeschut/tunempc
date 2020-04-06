@@ -417,7 +417,7 @@ class Pmpc(object):
     def step_acados(self, x0):
 
         # reset periodic indexing if necessary
-        self.__index_acados = self.__index_acados%len(self.__ref)
+        self.__index_acados = self.__index_acados%self.__Nref
 
         # format x0
         x0 = np.squeeze(x0.full())
@@ -454,8 +454,8 @@ class Pmpc(object):
 
         # extract reference TODO: slacks!!!
         ref = self.__ref
-        xref = np.squeeze(self.__ref[0][:self.__nx]) # will be made periodic at later point
-        uref = np.squeeze(self.__ref[0][self.__nx: self.__nx + self.__nu])
+        xref = np.squeeze(self.__ref[0][:self.__nx], axis = 1)
+        uref = np.squeeze(self.__ref[0][self.__nx: self.__nx + self.__nu], axis = 1)
 
         # create acados model # TODO: adapt for dae's
         model = AcadosModel()
@@ -503,7 +503,8 @@ class Pmpc(object):
             ocp.cost.Vx_e = np.eye(self.__nx)
             ocp.cost.yref  = np.squeeze(
                 ca.vertcat(xref,uref).full() - \
-                ct.mtimes(np.linalg.inv(ocp.cost.W),self.__qref[0][0].T).full() # gradient term
+                ct.mtimes(np.linalg.inv(ocp.cost.W),self.__qref[0][0].T).full(), # gradient term
+                axis = 1
                 )
             ocp.cost.yref_e = np.zeros((ny_e, ))
 
@@ -516,7 +517,7 @@ class Pmpc(object):
             C = self.__S['C'][0][:,:self.__nx]
             D = self.__S['C'][0][:,self.__nx:]
             lg = -self.__S['e'][0] + ct.mtimes(C,xref).full() + ct.mtimes(D,uref).full()
-            ocp.constraints.lg = np.squeeze(lg)
+            ocp.constraints.lg = np.squeeze(lg, axis = 1)
             ocp.constraints.ug = 1e15*np.ones((lg.shape[0],))
             ocp.constraints.C  = C
             ocp.constraints.D  = D
@@ -733,15 +734,16 @@ class Pmpc(object):
             idx = (self.__index_acados+i)%self.__Nref
 
             # reference
-            xref = np.squeeze(self.__ref[idx][:self.__nx])
-            uref = np.squeeze(self.__ref[idx][self.__nx: self.__nx + self.__nu])
+            xref = np.squeeze(self.__ref[idx][:self.__nx], axis = 1)
+            uref = np.squeeze(self.__ref[idx][self.__nx: self.__nx + self.__nu], axis = 1)
 
             # construct output reference with gradient term
             yref = np.squeeze(
                 ca.vertcat(xref,uref).full() - \
                 ct.mtimes(
                     np.linalg.inv(self.__Href[idx][0]), # inverse of weighting matrix
-                    self.__qref[idx][0].T).full() # gradient term
+                    self.__qref[idx][0].T).full(), # gradient term
+                axis = 1
                 )
             self.__acados_ocp_solver.set(i, 'yref', yref)
 
@@ -750,8 +752,8 @@ class Pmpc(object):
 
         # update terminal constraint
         idx = (self.__index_acados+self.__N)%self.__Nref
-        self.__acados_ocp_solver.set(self.__N, 'lbx', np.squeeze(self.__ref[idx][:self.__nx]))
-        self.__acados_ocp_solver.set(self.__N, 'ubx', np.squeeze(self.__ref[idx][:self.__nx]))
+        self.__acados_ocp_solver.set(self.__N, 'lbx', np.squeeze(self.__ref[idx][:self.__nx], axis = 1))
+        self.__acados_ocp_solver.set(self.__N, 'ubx', np.squeeze(self.__ref[idx][:self.__nx], axis = 1))
 
         return None
 
@@ -763,8 +765,8 @@ class Pmpc(object):
             idx = (self.__index_acados+i)%self.__Nref
 
             # initialize at reference
-            xref = np.squeeze(self.__ref[idx][:self.__nx])
-            uref = np.squeeze(self.__ref[idx][self.__nx: self.__nx + self.__nu])
+            xref = np.squeeze(self.__ref[idx][:self.__nx], axis = 1)
+            uref = np.squeeze(self.__ref[idx][self.__nx: self.__nx + self.__nu], axis = 1)
 
             # set initial guess
             self.__acados_ocp_solver.set(i, "x", xref)
@@ -772,7 +774,7 @@ class Pmpc(object):
 
         # terminal state
         idx = (self.__index_acados+self.__N)%self.__Nref
-        xref = np.squeeze(self.__ref[idx][:self.__nx])
+        xref = np.squeeze(self.__ref[idx][:self.__nx], axis = 1)
         self.__acados_ocp_solver.set(self.__N, "x", xref)
 
         return None

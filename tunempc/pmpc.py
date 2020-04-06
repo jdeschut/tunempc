@@ -512,13 +512,14 @@ class Pmpc(object):
 
         # set inequality constraints
         ocp.constraints.constr_type = 'BGH'
-        C = self.__S['C'][0][:,:self.__nx]
-        D = self.__S['C'][0][:,self.__nx:]
-        lg = -self.__S['e'][0] + ct.mtimes(C,xref).full() + ct.mtimes(D,uref).full()
-        ocp.constraints.lg = np.squeeze(lg)
-        ocp.constraints.ug = 1e15*np.ones((lg.shape[0],))
-        ocp.constraints.C  = C
-        ocp.constraints.D  = D
+        if self.__S['C'] is not None:
+            C = self.__S['C'][0][:,:self.__nx]
+            D = self.__S['C'][0][:,self.__nx:]
+            lg = -self.__S['e'][0] + ct.mtimes(C,xref).full() + ct.mtimes(D,uref).full()
+            ocp.constraints.lg = np.squeeze(lg)
+            ocp.constraints.ug = 1e15*np.ones((lg.shape[0],))
+            ocp.constraints.C  = C
+            ocp.constraints.D  = D
 
         # terminal constraint
         ocp.constraints.lbx_e = xref # will be made periodic at later point

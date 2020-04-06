@@ -141,7 +141,7 @@ class Pmpc(object):
             'hessian_approximation': 'exact',
             'ipopt_presolve': False,
             'max_iter': 2000,
-            'p_operator': ca.Function('p_operator',[self.__vars['x'],[self.__vars['x']]),
+            'p_operator': ca.Function('p_operator',[self.__vars['x']],[self.__vars['x']]),
             'slack_flag': 'none'
         }
 

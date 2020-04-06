@@ -4,6 +4,7 @@
 
 # output files
 *.jpg
+*.png
 *.eps
 *.csv
 *.xml

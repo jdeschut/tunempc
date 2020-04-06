@@ -157,7 +157,7 @@ if ACADOS_CODEGENERATE:
     opts['qp_solver_cond_N'] = 1 # ???
     opts['print_level'] = 0
     opts['sim_method_num_steps'] = 50
-    opts['tf'] = T # h = tf/N = 1 [s]
+    opts['tf'] = T
     opts['nlp_solver_max_iter'] = 300
     opts['nlp_solver_step_length'] = 1.0
 
@@ -238,7 +238,7 @@ plt.step(tgrid,lE)
 plt.step(tgrid,lTn)
 plt.step(tgrid,lTt)
 if ACADOS_CODEGENERATE:
-    plt.step(tgrid,lTt_a)
+    plt.step(tgrid,lTt_a, linestyle = '--')
 plt.legend(legend)
 plt.autoscale(enable=True, axis='x', tight=True)
 plt.grid(True)

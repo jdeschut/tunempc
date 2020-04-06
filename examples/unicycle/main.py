@@ -64,7 +64,7 @@ def dynamics(x, u, data, h = 1.0):
     f  = ca.Function('f',[x,u],[xdot])
     ode = {'x':x, 'p':u,'ode': f(x,u)}
 
-    return ca.integrator('F','rk',ode,{'tf':h,'number_of_finite_elements':50})
+    return [ca.integrator('F','rk',ode,{'tf':h,'number_of_finite_elements':50}), ode]
 
 def vars():
 
@@ -94,7 +94,7 @@ nu = u.shape[0]
 data = problemData()
 
 tuner = tunempc.Tuner(
-    f = dynamics(x, u, data, h= T/N),
+    f = dynamics(x, u, data, h= T/N)[0],
     l =  objective(x,u,data),
     p = N
 )
@@ -141,42 +141,77 @@ ctrlTn = tuner.create_mpc('tracking', N, opts=opts, tuning = tuningTn)
 # tuned tracking mpc controller
 ctrlTt = tuner.create_mpc('tuned', N, opts=opts)
 
+# generate embedded solver
+ACADOS_CODEGENERATE = True
+if ACADOS_CODEGENERATE:
+
+    # get system ode
+    ode = ca.Function('ode',[x.cat,u.cat],[dynamics(x,u,data, h=T/N)[1]['ode']])
+
+    # solver options
+    opts = {}
+    opts['qp_solver'] = 'FULL_CONDENSING_QPOASES' # PARTIAL_CONDENSING_HPIPM
+    opts['hessian_approx'] = 'EXACT'
+    opts['integrator_type'] = 'ERK'
+    opts['nlp_solver_type'] = 'SQP' # SQP_RTI
+    opts['qp_solver_cond_N'] = 1 # ???
+    opts['print_level'] = 1
+    opts['sim_method_num_steps'] = 50
+    opts['tf'] = T # h = tf/N = 1 [s]
+    opts['nlp_solver_max_iter'] = 300
+    opts['nlp_solver_step_length'] = 1.0
+
+    acados_ocp_solver, acados_integrator = ctrlTt.generate(
+        ode, opts = opts, name = 'unicycle'
+        )
+
 # disturbance
 dist_z  = [0.1, 0.1, 0.5, 0.5]
-Nstep   = [0, 34, 69, 105]
+Nstep   = [5, 34, 69, 105]
 
 # initialize
-uE, uTn, uTt = [], [], []
-lE, lTn, lTt = [], [], []
+uE, uTn, uTt, uTt_a = [], [], [], []
+lE, lTn, lTt, lTt_a = [], [], [], []
 
 x_initE  = wsol['x',0]
 x_initTn = wsol['x',0]
 x_initTt = wsol['x',0]
-plant_sim = dynamics(x, u, data, h= T/N)
+x_initTt_a = wsol['x',0]
+plant_sim = dynamics(x, u, data, h= T/N)[0]
 
 Nsim  = 250
 tgrid = [T/N*i for i in range(Nsim)]
 for k in range(Nsim):
+
+    print('Closed-loop simulation step: {}'.format(k))
 
     if k in Nstep:
         dist = dist_z[Nstep.index(k)]
         x_initE[0]  += dist
         x_initTn[0] += dist
         x_initTt[0] += dist
+        x_initTt_a[0] += dist
 
+    print('Compute EMPC feedback...')
     uE.append(ctrlE.step(x_initE))
+    print('Compute TMPC feedback...')
     uTn.append(ctrlTn.step(x_initTn))
+    print('Compute TuneMPC feedback...')
     uTt.append(ctrlTt.step(x_initTt))
+    print('Compute TuneMPC_acados feedback...')
+    uTt_a.append(ctrlTt.step_acados(x_initTt_a))
 
     lOpt = tuner.l(wsol['x', k%N], wsol['u',k%N])
     lE.append(tuner.l(x_initE,uE[-1]) - lOpt)
     lTn.append(tuner.l(x_initTn,uTn[-1]) - lOpt)
     lTt.append(tuner.l(x_initTt,uTt[-1]) - lOpt)
+    lTt_a.append(tuner.l(x_initTt_a,uTt_a[-1]) - lOpt)
 
     # forward sim
     x_initE  = plant_sim(x0 = x_initE,  p = uE[-1])['xf']
     x_initTn = plant_sim(x0 = x_initTn, p = uTn[-1])['xf']
     x_initTt = plant_sim(x0 = x_initTt, p = uTt[-1])['xf']
+    x_initTt_a = plant_sim(x0 = x_initTt_a, p = uTt_a[-1])['xf']
 
 # plot feedback controls to check equivalence
 for i in range(nu):
@@ -184,14 +219,16 @@ for i in range(nu):
     plt.step(tgrid,[uE[j][i] - wsol['u',j%N][i] for j in range(len(uE))])
     plt.step(tgrid,[uTn[j][i] - wsol['u',j%N][i] for j in range(len(uTn))])
     plt.step(tgrid,[uTt[j][i] - wsol['u',j%N][i] for j in range(len(uTt))])
-    plt.legend(['economic', 'tracking', 'tuned'])
+    plt.step(tgrid,[uTt_a[j][i] - wsol['u',j%N][i] for j in range(len(uTt))],linestyle='--')
+    plt.legend(['EMPC', 'TMPC', 'TuneMPC', 'TuneMPC_acados'])
     plt.title('Feedback control deviation')
 
 plt.figure(nu)
 plt.step(tgrid,lE)
 plt.step(tgrid,lTn)
 plt.step(tgrid,lTt)
-plt.legend(['economic', 'tracking', 'tuned'])
+plt.step(tgrid,lTt_a)
+plt.legend(['EMPC', 'TMPC', 'TuneMPC', 'TuneMPC_acados'])
 plt.title('Stage cost deviation')
 
 plt.show()

@@ -312,6 +312,7 @@ class Pocp(object):
             S['C_As'] = C_As
 
         else:
+            S['C']    = None
             S['C_As'] = None
             S['G']    = None
             S['e']    = None

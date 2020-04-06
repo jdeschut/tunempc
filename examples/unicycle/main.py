@@ -151,11 +151,11 @@ if ACADOS_CODEGENERATE:
     # solver options
     opts = {}
     opts['qp_solver'] = 'FULL_CONDENSING_QPOASES' # PARTIAL_CONDENSING_HPIPM
-    opts['hessian_approx'] = 'EXACT'
+    opts['hessian_approx'] = 'GAUSS_NEWTON'
     opts['integrator_type'] = 'ERK'
     opts['nlp_solver_type'] = 'SQP' # SQP_RTI
     opts['qp_solver_cond_N'] = 1 # ???
-    opts['print_level'] = 1
+    opts['print_level'] = 0
     opts['sim_method_num_steps'] = 50
     opts['tf'] = T # h = tf/N = 1 [s]
     opts['nlp_solver_max_iter'] = 300
@@ -183,7 +183,7 @@ Nsim  = 250
 tgrid = [T/N*i for i in range(Nsim)]
 for k in range(Nsim):
 
-    print('Closed-loop simulation step: {}'.format(k))
+    print('Closed-loop simulation step: {}/{}'.format(k+1,Nsim))
 
     if k in Nstep:
         dist = dist_z[Nstep.index(k)]
@@ -212,6 +212,7 @@ for k in range(Nsim):
     x_initTn = plant_sim(x0 = x_initTn, p = uTn[-1])['xf']
     x_initTt = plant_sim(x0 = x_initTt, p = uTt[-1])['xf']
     x_initTt_a = plant_sim(x0 = x_initTt_a, p = uTt_a[-1])['xf']
+    print(np.linalg.norm(x_initTt_a - wsol['x',(k+1)%N]))
 
 # plot feedback controls to check equivalence
 for i in range(nu):
@@ -220,6 +221,8 @@ for i in range(nu):
     plt.step(tgrid,[uTn[j][i] - wsol['u',j%N][i] for j in range(len(uTn))])
     plt.step(tgrid,[uTt[j][i] - wsol['u',j%N][i] for j in range(len(uTt))])
     plt.step(tgrid,[uTt_a[j][i] - wsol['u',j%N][i] for j in range(len(uTt))],linestyle='--')
+    plt.autoscale(enable=True, axis='x', tight=True)
+    plt.grid(True)
     plt.legend(['EMPC', 'TMPC', 'TuneMPC', 'TuneMPC_acados'])
     plt.title('Feedback control deviation')
 
@@ -229,6 +232,8 @@ plt.step(tgrid,lTn)
 plt.step(tgrid,lTt)
 plt.step(tgrid,lTt_a)
 plt.legend(['EMPC', 'TMPC', 'TuneMPC', 'TuneMPC_acados'])
+plt.autoscale(enable=True, axis='x', tight=True)
+plt.grid(True)
 plt.title('Stage cost deviation')
 
 plt.show()

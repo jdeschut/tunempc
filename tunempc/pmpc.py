@@ -442,6 +442,7 @@ class Pmpc(object):
 
         # update initial guess TODO: shifting
         self.__index_acados += 1
+        self.__shift_initial_guess_acados()
 
         return self.__acados_ocp_solver.get(0, "u")
 
@@ -705,6 +706,19 @@ class Pmpc(object):
         lam_g_shifted['term'] = lam_g0['term']
 
         return w_shifted, lam_g_shifted
+
+    def __shift_initial_guess_acados(self):
+
+        for i in range(self.__N):
+            x_prev = np.squeeze(self.__w_sol_acados['x',i+1].full(), axis = 1)
+            self.__acados_ocp_solver.set(i, "x", x_prev)
+            if i < self.__N-1:
+                u_prev = np.squeeze(self.__w_sol_acados['u',i+1].full(), axis = 1)
+                self.__acados_ocp_solver.set(i, "u", u_prev)
+        self.__acados_ocp_solver.set(self.__N, "x", x_prev)
+        self.__acados_ocp_solver.set(self.__N-1, "u", u_prev)
+
+        return None
 
     def __set_initial_guess(self):
 

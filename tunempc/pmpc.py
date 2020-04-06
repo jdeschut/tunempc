@@ -441,11 +441,16 @@ class Pmpc(object):
             self.__w_sol_acados['u',i] = self.__acados_ocp_solver.get(i,"u")
         self.__w_sol_acados['x',self.__N] = self.__acados_ocp_solver.get(self.__N,"x")
 
-        # update initial guess TODO: shifting
-        self.__index_acados += 1
+        # feedback policy
+        u0 = self.__acados_ocp_solver.get(0, "u")
+
+        # update initial guess
         self.__shift_initial_guess_acados()
 
-        return self.__acados_ocp_solver.get(0, "u")
+        # shift index
+        self.__index_acados += 1
+
+        return u0
 
     def generate(self, ode, name = 'tunempc', opts = {}):
 

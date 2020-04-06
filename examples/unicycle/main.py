@@ -167,7 +167,7 @@ if ACADOS_CODEGENERATE:
 
 # disturbance
 dist_z  = [0.1, 0.1, 0.5, 0.5]
-Nstep   = [5, 34, 69, 105]
+Nstep   = [1, 34, 69, 105]
 
 # initialize
 uE, uTn, uTt, uTt_a = [], [], [], []

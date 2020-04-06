@@ -725,8 +725,15 @@ class Pmpc(object):
             if i < self.__N-1:
                 u_prev = np.squeeze(self.__w_sol_acados['u',i+1].full(), axis = 1)
                 self.__acados_ocp_solver.set(i, "u", u_prev)
-        self.__acados_ocp_solver.set(self.__N, "x", x_prev)
-        self.__acados_ocp_solver.set(self.__N-1, "u", u_prev)
+
+        # initial guess in terminal stage on periodic trajectory
+        idx = (self.__index_acados+self.__N)%self.__Nref
+
+        # reference
+        xref = np.squeeze(self.__ref[idx+1][:self.__nx], axis = 1)
+        uref = np.squeeze(self.__ref[idx][self.__nx: self.__nx + self.__nu], axis = 1)
+        self.__acados_ocp_solver.set(self.__N, "x", xref)
+        self.__acados_ocp_solver.set(self.__N-1, "u", uref)
 
         return None
 

@@ -118,7 +118,7 @@ if ACADOS_CODEGENERATE:
     ctrls_acados = {'tuned_acados': ctrls['tuned']}
 
 # check equivalence
-alpha = np.linspace(-0.1, 1.0, 2)
+alpha = np.linspace(-0.1, 1.0, 10)
 x0 = wsol['x',0]
 dx_diehl = np.array([1.0,0.5, 100.0, 100.0]) - wsol['x',0]
 

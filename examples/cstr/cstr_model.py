@@ -93,7 +93,10 @@ def dynamics(x, u, data):
     # create ode for integrator
     ode = {'x':x, 'p':u,'ode': xdot/3600}
 
-    return ca.integrator('F',data['integrator'],ode,{'tf':data['ts'],'number_of_finite_elements':data['num_steps']})
+    # integrator
+    F = ca.integrator('F',data['integrator'],ode,{'tf':data['ts'],'number_of_finite_elements':data['num_steps']})
+
+    return [F, ode]
 
 def vars():
 

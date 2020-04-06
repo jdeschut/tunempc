@@ -432,13 +432,14 @@ class Pmpc(object):
         # solve
         status = self.__acados_ocp_solver.solve()
         if status != 0:
-            raise Exception('acados integrator returned status {}. Exiting.'.format(status))
+            raise Exception('acados solver returned status {}. Exiting.'.format(status))
 
         # save solution
         self.__w_sol_acados = self.__w(0.0)
         for i in range(self.__N): # TODO: slacks
             self.__w_sol_acados['x',i] = self.__acados_ocp_solver.get(i,"x")
             self.__w_sol_acados['u',i] = self.__acados_ocp_solver.get(i,"u")
+        self.__w_sol_acados['x',self.__N] = self.__acados_ocp_solver.get(self.__N,"x")
 
         # update initial guess TODO: shifting
         self.__index_acados += 1
@@ -460,10 +461,14 @@ class Pmpc(object):
 
         # create acados model # TODO: adapt for dae's
         model = AcadosModel()
-        xdot = ca.MX.sym('xdot',self.__nx)
-        model.xdot = xdot
-        model.f_impl_expr = xdot - ode(self.__vars['x'], self.__vars['u'])
-        model.f_expl_expr = xdot
+        if 'integrator_type' in opts:
+            if opts['integrator_type'] == 'IRK':
+                xdot = ca.MX.sym('xdot',self.__nx)
+                model.xdot = xdot
+                model.f_impl_expr = xdot - ode(self.__vars['x'], self.__vars['u'])
+                model.f_expl_expr = xdot
+            elif opts['integrator_type'] == 'ERK':
+                model.f_expl_expr = ode(self.__vars['x'], self.__vars['u'])
         model.x = self.__vars['x']
         model.u = self.__vars['u']
         model.p = []

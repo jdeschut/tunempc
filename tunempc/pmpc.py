@@ -141,7 +141,7 @@ class Pmpc(object):
             'hessian_approximation': 'exact',
             'ipopt_presolve': False,
             'max_iter': 2000,
-            'p_operator': None,
+            'p_operator': ca.Function('p_operator',[self.__vars['x'],[self.__vars['x']]),
             'slack_flag': 'none'
         }
 
@@ -234,10 +234,7 @@ class Pmpc(object):
             constraints_entry += (ct.entry('h', shape = self.__h.size1_out(0), repeat = self.__N),)
 
         # terminal constraint
-        if self.__p_operator is not None:
-            nx_term = self.__p_operator.size1_out(0)
-        else:
-            nx_term = self.__nx
+        nx_term = self.__p_operator.size1_out(0)
 
         # create general constraints structure
         g_struct = ct.struct_symMX([
@@ -269,10 +266,7 @@ class Pmpc(object):
 
         repeated_constr = list(itertools.chain.from_iterable(zip(*constr.values())))
 
-        if self.__p_operator is not None:
-            term_constraint = self.__p_operator(w['x',-1] - xN)
-        else:
-            term_constraint = w['x',-1] - xN
+        term_constraint = self.__p_operator(w['x',-1] - xN)
 
         self.__g = g_struct(ca.vertcat(
             w['x',0] - x0,
@@ -533,10 +527,12 @@ class Pmpc(object):
             ocp.constraints.C  = C
             ocp.constraints.D  = D
 
-        # terminal constraint
-        ocp.constraints.lbx_e = xref # will be made periodic at later point
-        ocp.constraints.ubx_e = xref
-        ocp.constraints.Jbx_e = np.eye(self.__nx)
+        # terminal constraint:
+        x_term = self.__p_operator(self.__vars['x'])
+        Jbx = ca.Function('Jbx',[self.__vars['x']], [ca.jacobian(x_term, self.__vars['x'])])(0.0)
+        ocp.constraints.Jbx_e = Jbx.full()
+        ocp.constraints.lbx_e = np.squeeze(self.__p_operator(xref).full(), axis = 1)
+        ocp.constraints.ubx_e = np.squeeze(self.__p_operator(xref).full(), axis = 1)
 
         for option in list(opts.keys()):
             setattr(ocp.solver_options, option, opts[option])
@@ -593,10 +589,7 @@ class Pmpc(object):
                         lam_h += [-self.__scost] # TODO not entirely correct
 
                     lamgk['h',j] = ct.vertcat(*lam_h)
-            if self.__p_operator is not None:
-                lamgk['term'] = self.__p_operator(lam_g_ref['dyn',(k+self.__N-1)%self.__Nref])
-            else:
-                lamgk['term'] = lam_g_ref['dyn',(k+self.__N-1)%self.__Nref]
+            lamgk['term'] = self.__p_operator(lam_g_ref['dyn',(k+self.__N-1)%self.__Nref])
 
             ref_pr.append(ct.vertcat(*refk))
             ref_du.append(lamgk.cat)
@@ -783,8 +776,9 @@ class Pmpc(object):
 
         # update terminal constraint
         idx = (self.__index_acados+self.__N)%self.__Nref
-        self.__acados_ocp_solver.set(self.__N, 'lbx', np.squeeze(self.__ref[idx][:self.__nx], axis = 1))
-        self.__acados_ocp_solver.set(self.__N, 'ubx', np.squeeze(self.__ref[idx][:self.__nx], axis = 1))
+        x_term = np.squeeze(self.__p_operator(self.__ref[idx][:self.__nx]), axis = 1)
+        self.__acados_ocp_solver.set(self.__N, 'lbx', x_term)
+        self.__acados_ocp_solver.set(self.__N, 'ubx', x_term)
 
         return None
 

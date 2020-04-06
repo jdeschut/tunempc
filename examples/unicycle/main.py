@@ -142,7 +142,7 @@ ctrlTn = tuner.create_mpc('tracking', N, opts=opts, tuning = tuningTn)
 ctrlTt = tuner.create_mpc('tuned', N, opts=opts)
 
 # generate embedded solver
-ACADOS_CODEGENERATE = True
+ACADOS_CODEGENERATE = False
 if ACADOS_CODEGENERATE:
 
     # get system ode
@@ -190,7 +190,8 @@ for k in range(Nsim):
         x_initE[0]  += dist
         x_initTn[0] += dist
         x_initTt[0] += dist
-        x_initTt_a[0] += dist
+        if ACADOS_CODEGENERATE:
+            x_initTt_a[0] += dist
 
     print('Compute EMPC feedback...')
     uE.append(ctrlE.step(x_initE))
@@ -198,21 +199,23 @@ for k in range(Nsim):
     uTn.append(ctrlTn.step(x_initTn))
     print('Compute TuneMPC feedback...')
     uTt.append(ctrlTt.step(x_initTt))
-    print('Compute TuneMPC_acados feedback...')
-    uTt_a.append(ctrlTt.step_acados(x_initTt_a))
+    if ACADOS_CODEGENERATE:
+        print('Compute TuneMPC_acados feedback...')
+        uTt_a.append(ctrlTt.step_acados(x_initTt_a))
 
     lOpt = tuner.l(wsol['x', k%N], wsol['u',k%N])
     lE.append(tuner.l(x_initE,uE[-1]) - lOpt)
     lTn.append(tuner.l(x_initTn,uTn[-1]) - lOpt)
     lTt.append(tuner.l(x_initTt,uTt[-1]) - lOpt)
-    lTt_a.append(tuner.l(x_initTt_a,uTt_a[-1]) - lOpt)
+    if ACADOS_CODEGENERATE:
+        lTt_a.append(tuner.l(x_initTt_a,uTt_a[-1]) - lOpt)
 
     # forward sim
     x_initE  = plant_sim(x0 = x_initE,  p = uE[-1])['xf']
     x_initTn = plant_sim(x0 = x_initTn, p = uTn[-1])['xf']
     x_initTt = plant_sim(x0 = x_initTt, p = uTt[-1])['xf']
-    x_initTt_a = plant_sim(x0 = x_initTt_a, p = uTt_a[-1])['xf']
-    print(np.linalg.norm(x_initTt_a - wsol['x',(k+1)%N]))
+    if ACADOS_CODEGENERATE:
+        x_initTt_a = plant_sim(x0 = x_initTt_a, p = uTt_a[-1])['xf']
 
 # plot feedback controls to check equivalence
 for i in range(nu):
@@ -220,18 +223,23 @@ for i in range(nu):
     plt.step(tgrid,[uE[j][i] - wsol['u',j%N][i] for j in range(len(uE))])
     plt.step(tgrid,[uTn[j][i] - wsol['u',j%N][i] for j in range(len(uTn))])
     plt.step(tgrid,[uTt[j][i] - wsol['u',j%N][i] for j in range(len(uTt))])
-    plt.step(tgrid,[uTt_a[j][i] - wsol['u',j%N][i] for j in range(len(uTt))],linestyle='--')
+    if ACADOS_CODEGENERATE:
+        plt.step(tgrid,[uTt_a[j][i] - wsol['u',j%N][i] for j in range(len(uTt))],linestyle='--')
     plt.autoscale(enable=True, axis='x', tight=True)
     plt.grid(True)
-    plt.legend(['EMPC', 'TMPC', 'TuneMPC', 'TuneMPC_acados'])
+    legend = ['EMPC', 'TMPC', 'TuneMPC']
+    if ACADOS_CODEGENERATE:
+        legend += ['TuneMPC_acados']
+    plt.legend(legend)
     plt.title('Feedback control deviation')
 
 plt.figure(nu)
 plt.step(tgrid,lE)
 plt.step(tgrid,lTn)
 plt.step(tgrid,lTt)
-plt.step(tgrid,lTt_a)
-plt.legend(['EMPC', 'TMPC', 'TuneMPC', 'TuneMPC_acados'])
+if ACADOS_CODEGENERATE:
+    plt.step(tgrid,lTt_a)
+plt.legend(legend)
 plt.autoscale(enable=True, axis='x', tight=True)
 plt.grid(True)
 plt.title('Stage cost deviation')

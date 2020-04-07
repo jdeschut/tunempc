@@ -162,7 +162,6 @@ for i in range(nu):
     plt.grid(True)
     plt.ylabel('Delta u{}'.format(i))
     plt.autoscale(enable=True, axis='x', tight=True)
-    plt.legend(['prediction'])
 
 hSol = []
 for k in range(Nmpc):
@@ -180,8 +179,6 @@ for i in range(nh):
     axes[i//ncol, i%ncol].grid(True)
     axes[i//ncol, i%ncol].set_ylabel('h{}'.format(i))
     axes[i//ncol, i%ncol].autoscale(enable=True, axis='x', tight=True)
-    if i == 0:
-        axes[k//ncol, k%ncol].legend(['reference', 'prediction'])
 
 plt.figure(2)
 for i in range(nx):
@@ -194,8 +191,18 @@ for i in range(nx):
     plt.grid(True)
     plt.ylabel('Delta x{}'.format(i))
     plt.autoscale(enable=True, axis='x', tight=True)
+
+plt.figure(3)
+for i in range(3):
+    plt.subplot(3,1,i+1)
     if i == 0:
-        plt.legend(['reference', 'prediction'])
+        plt.title('Slacked equalities')
+    plt.step(tgrid, [tuner.sys['g'](sol['x',k], sol['u',k], sol['us',k])[i] for k in range(Nmpc)])
+    plt.hlines(0.0, tgrid[0], tgrid[-1], linestyle ='--')
+    plt.grid(True)
+    plt.ylabel('g{}'.format(i))
+    plt.autoscale(enable=True, axis='x', tight=True)
+
 plt.show()
 import ipdb; ipdb.set_trace()
 

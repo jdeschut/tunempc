@@ -420,7 +420,7 @@ class Pmpc(object):
         self.__acados_ocp_solver.set(0, "lbx", x0)
         self.__acados_ocp_solver.set(0, "ubx", x0)
 
-        # update reference and tuning matrices # TODO slacks
+        # update reference and tuning matrices
         self.__set_acados_reference()
 
         # solve
@@ -430,13 +430,15 @@ class Pmpc(object):
 
         # save solution
         self.__w_sol_acados = self.__w(0.0)
-        for i in range(self.__N): # TODO: slacks
+        for i in range(self.__N):
             self.__w_sol_acados['x',i] = self.__acados_ocp_solver.get(i,"x")
-            self.__w_sol_acados['u',i] = self.__acados_ocp_solver.get(i,"u")
+            self.__w_sol_acados['u',i] = self.__acados_ocp_solver.get(i,"u")[:self.__nu]
+            if 'us' in self.__vars:
+                self.__w_sol_acados['us',i] = self.__acados_ocp_solver.get(i,"u")[self.__nu:]
         self.__w_sol_acados['x',self.__N] = self.__acados_ocp_solver.get(self.__N,"x")
 
         # feedback policy
-        u0 = self.__acados_ocp_solver.get(0, "u")
+        u0 = self.__acados_ocp_solver.get(0, "u")[:self.__nu]
 
         # update initial guess
         self.__shift_initial_guess_acados()
@@ -453,12 +455,16 @@ class Pmpc(object):
 
         from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver, AcadosSimSolver
 
-        # extract reference TODO: slacks!!!
-        ref = self.__ref
-        xref = np.squeeze(self.__ref[0][:self.__nx], axis = 1)
-        uref = np.squeeze(self.__ref[0][self.__nx: self.__nx + self.__nu], axis = 1)
+        # extract dimensions
+        nx = self.__nx
+        nu = self.__nu + self.__ns# treat slacks as pseudo-controls 
 
-        # create acados model # TODO: adapt for dae's
+        # extract reference
+        ref = self.__ref
+        xref = np.squeeze(self.__ref[0][:nx], axis = 1)
+        uref = np.squeeze(self.__ref[0][nx: nx + nu], axis = 1)
+
+        # create acados model
         model = AcadosModel()
         if 'integrator_type' in opts:
             if opts['integrator_type'] == 'IRK':
@@ -475,15 +481,15 @@ class Pmpc(object):
         # model.con_h_expr = tuner.sys['h'](tuner.vars['x'], tuner.vars['u'])
 
         if self.__type == 'economic':
-            model.cost_expr_ext_cost = self.__cost(self.__vars['x'], self.__vars['u'])
+            model.cost_expr_ext_cost = self.__cost(model.x, model.u[:self.__nu])
 
         # create acados ocp
         ocp = AcadosOcp()
         ocp.model = model
-        ny = self.__nx + self.__nu
-        ny_e = self.__nx
+        ny = nx + nu
+        ny_e = nx
 
-        # set dimensions
+        # set horizon length
         ocp.dims.N = self.__N
 
         # set cost module
@@ -499,13 +505,13 @@ class Pmpc(object):
 
             # set-up linear least squares cost
             ocp.cost.cost_type = 'LINEAR_LS'
-            ocp.cost.W_e = np.zeros((self.__nx,self.__nx))
-            ocp.cost.Vx = np.zeros((ny, self.__nx))
-            ocp.cost.Vx[:self.__nx,:self.__nx] = np.eye(self.__nx)
-            Vu = np.zeros((ny, self.__nu))
-            Vu[self.__nx:,:] = np.eye(self.__nu)
+            ocp.cost.W_e = np.zeros((nx, nx))
+            ocp.cost.Vx = np.zeros((ny, nx))
+            ocp.cost.Vx[:nx,:nx] = np.eye(nx)
+            Vu = np.zeros((ny, nu))
+            Vu[nx:,:] = np.eye(nu)
             ocp.cost.Vu = Vu
-            ocp.cost.Vx_e = np.eye(self.__nx)
+            ocp.cost.Vx_e = np.eye(nx)
             ocp.cost.yref  = np.squeeze(
                 ca.vertcat(xref,uref).full() - \
                 ct.mtimes(np.linalg.inv(ocp.cost.W),self.__qref[0][0].T).full(), # gradient term
@@ -519,8 +525,8 @@ class Pmpc(object):
         # set inequality constraints
         ocp.constraints.constr_type = 'BGH'
         if self.__S['C'] is not None:
-            C = self.__S['C'][0][:,:self.__nx]
-            D = self.__S['C'][0][:,self.__nx:]
+            C = self.__S['C'][0][:,:nx]
+            D = self.__S['C'][0][:,nx:]
             lg = -self.__S['e'][0] + ct.mtimes(C,xref).full() + ct.mtimes(D,uref).full()
             ocp.constraints.lg = np.squeeze(lg, axis = 1)
             ocp.constraints.ug = 1e15*np.ones((lg.shape[0],))
@@ -528,8 +534,8 @@ class Pmpc(object):
             ocp.constraints.D  = D
 
         # terminal constraint:
-        x_term = self.__p_operator(self.__vars['x'])
-        Jbx = ca.Function('Jbx',[self.__vars['x']], [ca.jacobian(x_term, self.__vars['x'])])(0.0)
+        x_term = self.__p_operator(model.x)
+        Jbx = ca.Function('Jbx',[model.x], [ca.jacobian(x_term, model.x)])(0.0)
         ocp.constraints.Jbx_e = Jbx.full()
         ocp.constraints.lbx_e = np.squeeze(self.__p_operator(xref).full(), axis = 1)
         ocp.constraints.ubx_e = np.squeeze(self.__p_operator(xref).full(), axis = 1)
@@ -717,6 +723,8 @@ class Pmpc(object):
             self.__acados_ocp_solver.set(i, "x", x_prev)
             if i < self.__N-1:
                 u_prev = np.squeeze(self.__w_sol_acados['u',i+1].full(), axis = 1)
+                if 'us' in self.__vars:
+                    u_prev = np.squeeze(ct.vertcat(u_prev, self.__w_sol_acados['us',i+1]).full(), axis = 1)
                 self.__acados_ocp_solver.set(i, "u", u_prev)
 
         # initial guess in terminal stage on periodic trajectory
@@ -724,7 +732,7 @@ class Pmpc(object):
 
         # reference
         xref = np.squeeze(self.__ref[(idx+1)%self.__Nref][:self.__nx], axis = 1)
-        uref = np.squeeze(self.__ref[idx][self.__nx: self.__nx + self.__nu], axis = 1)
+        uref = np.squeeze(self.__ref[idx][self.__nx: self.__nx + self.__nu + self.__ns], axis = 1)
         self.__acados_ocp_solver.set(self.__N, "x", xref)
         self.__acados_ocp_solver.set(self.__N-1, "u", uref)
 
@@ -759,7 +767,7 @@ class Pmpc(object):
 
             # reference
             xref = np.squeeze(self.__ref[idx][:self.__nx], axis = 1)
-            uref = np.squeeze(self.__ref[idx][self.__nx: self.__nx + self.__nu], axis = 1)
+            uref = np.squeeze(self.__ref[idx][self.__nx: self.__nx + self.__nu + self.__ns], axis = 1)
 
             # construct output reference with gradient term
             yref = np.squeeze(
@@ -791,7 +799,7 @@ class Pmpc(object):
 
             # initialize at reference
             xref = np.squeeze(self.__ref[idx][:self.__nx], axis = 1)
-            uref = np.squeeze(self.__ref[idx][self.__nx: self.__nx + self.__nu], axis = 1)
+            uref = np.squeeze(self.__ref[idx][self.__nx: self.__nx + self.__nu + self.__ns], axis = 1)
 
             # set initial guess
             self.__acados_ocp_solver.set(i, "x", xref)

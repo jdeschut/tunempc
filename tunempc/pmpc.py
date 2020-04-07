@@ -448,7 +448,7 @@ class Pmpc(object):
 
         return u0
 
-    def generate(self, ode, name = 'tunempc', opts = {}):
+    def generate(self, dae, name = 'tunempc', opts = {}):
 
         """ Create embeddable NLP solver
         """
@@ -466,18 +466,48 @@ class Pmpc(object):
 
         # create acados model
         model = AcadosModel()
-        if 'integrator_type' in opts:
-            if opts['integrator_type'] == 'IRK':
-                xdot = ca.MX.sym('xdot',self.__nx)
-                model.xdot = xdot
-                model.f_impl_expr = xdot - ode(self.__vars['x'], self.__vars['u'])
-                model.f_expl_expr = xdot
-            elif opts['integrator_type'] == 'ERK':
-                model.f_expl_expr = ode(self.__vars['x'], self.__vars['u'])
-        model.x = self.__vars['x']
-        model.u = self.__vars['u']
+        model.x = ca.MX.sym('x',nx)
+        model.u = ca.MX.sym('u',nu)
         model.p = []
         model.name = name
+
+        # detect input type
+        n_in = dae.n_in()
+        if n_in == 2:
+
+            # xdot = f(x, u)
+            if 'integrator_type' in opts:
+                if opts['integrator_type'] == 'IRK':
+                    xdot = ca.MX.sym('xdot', nx)
+                    model.xdot = xdot
+                    model.f_impl_expr = xdot - dae(model.x, model.u[:self.__nu])
+                    model.f_expl_expr = xdot
+                elif opts['integrator_type'] == 'ERK':
+                    model.f_expl_expr = dae(model.x, model.u[:self.__nu])
+            else:
+                raise ValueError('Provide numerical integrator type!')
+
+        else:
+
+            xdot = ca.MX.sym('xdot', nx)
+            model.xdot = xdot
+            model.f_expl_expr = xdot
+
+            if n_in == 3:
+
+                # f(xdot, x, u) = 0
+                model.f_impl_expr = dae(xdot, model.x, model.u[:self.__nu])
+
+            elif n_in == 4:
+
+                # f(xdot, x, u, z) = 0 
+                nz = dae.size1_in(3)
+                z = ca.MX.sym('z', nz)
+                model.z = z
+                model.f_impl_expr = dae(xdot, model.x, model.u[:self.__nu], z)
+            else:
+                raise ValueError('Invalid number of inputs for system dynamics function.')
+
         # model.con_h_expr = tuner.sys['h'](tuner.vars['x'], tuner.vars['u'])
 
         if self.__type == 'economic':
@@ -518,6 +548,8 @@ class Pmpc(object):
                 axis = 1
                 )
             ocp.cost.yref_e = np.zeros((ny_e, ))
+            if n_in == 4: # DAE flag
+                ocp.cost.Vz = np.zeros((ny,nz))
 
         # initial condition
         ocp.constraints.x0 = xref

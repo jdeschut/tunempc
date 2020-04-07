@@ -508,7 +508,8 @@ class Pmpc(object):
             else:
                 raise ValueError('Invalid number of inputs for system dynamics function.')
 
-        # model.con_h_expr = tuner.sys['h'](tuner.vars['x'], tuner.vars['u'])
+        if self.__gnl is not None:
+            model.con_h_expr = self.__gnl(model.x, model.u[:self.__nu], model.u[self.__nu:])
 
         if self.__type == 'economic':
             model.cost_expr_ext_cost = self.__cost(model.x, model.u[:self.__nu])
@@ -564,6 +565,11 @@ class Pmpc(object):
             ocp.constraints.ug = 1e15*np.ones((lg.shape[0],))
             ocp.constraints.C  = C
             ocp.constraints.D  = D
+
+        # set nonlinear equality constraints
+        if self.__gnl is not None:
+            ocp.constraints.lh = np.zeros(self.__ns,)
+            ocp.constraints.uh = np.zeros(self.__ns,)
 
         # terminal constraint:
         x_term = self.__p_operator(model.x)

@@ -173,7 +173,7 @@ nrow = int(np.ceil(nh/ncol))
 fig, axes = plt.subplots(nrow, ncol, sharex = 'col', num=1)
 for i in range(nh):
     axes[i//ncol, i%ncol].step(tgrid, [hOpt[k][i] for k in range(Nmpc)], color = 'black', linestyle = '--', where='post')
-    axes[i//ncol, i%ncol].step(tgrid, [hSol[k][i] for k in range(Nmpc)])
+    axes[i//ncol, i%ncol].step(tgrid, [hSol[k][i] for k in range(Nmpc)], where = 'post')
     axes[i//ncol, i%ncol].grid(True)
     axes[i//ncol, i%ncol].hlines(0.0, tgrid[0], tgrid[-1])
     axes[i//ncol, i%ncol].grid(True)

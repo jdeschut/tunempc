@@ -425,8 +425,8 @@ class Pmpc(object):
 
         # solve
         status = self.__acados_ocp_solver.solve()
-        if status != 0:
-            raise Exception('acados solver returned status {}. Exiting.'.format(status))
+        # if status != 0:
+        #     raise Exception('acados solver returned status {}. Exiting.'.format(status))
 
         # save solution
         self.__w_sol_acados = self.__w(0.0)

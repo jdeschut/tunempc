@@ -62,9 +62,7 @@ wsol = tuner.solve_ocp(w0 = user_input['w0'])
 # convexify stage cost matrices
 Hc   = tuner.convexify(solver='mosek')
 S    = tuner.S
-test = S['q'][0] - ct.mtimes(ct.mtimes(np.linalg.inv(S['Hc'][0]), S['Hc'][0]), S['q'][0].T).T
-print(test)
-import ipdb; ipdb.set_trace()
+
 # set-up open-loop scenario
 Nmpc  = 20
 alpha_steps = 20
@@ -98,20 +96,47 @@ opts['slack_flag'] = 'active'
 # create controllers
 ctrls = {}
 
-# economic MPC
-ctrls['EMPC'] = tuner.create_mpc('economic', Nmpc,opts=opts)
+# # economic MPC
+# ctrls['EMPC'] = tuner.create_mpc('economic', Nmpc,opts=opts)
 
-# standard tracking MPC
-tuningTn = {'H': [np.diag((nx+nu)*[1]+sys['vars']['us'].shape[0]*[0.0])]*user_input['p'], 'q': S['q']}
-ctrls['TMPC-1'] = tuner.create_mpc('tracking', Nmpc, tuning = tuningTn, opts = opts)
+# # standard tracking MPC
+# tuningTn = {'H': [np.diag((nx+nu)*[1]+sys['vars']['us'].shape[0]*[0.0])]*user_input['p'], 'q': S['q']}
+# ctrls['TMPC-1'] = tuner.create_mpc('tracking', Nmpc, tuning = tuningTn, opts = opts)
 
-# manually tuned tracking MPC
-Ht2 = [np.diag([0.1,0.1,0.1, 1.0, 1.0, 1.0, 1.0e3, 1.0, 100.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0])]*user_input['p']
-tuningTn2 = {'H': Ht2, 'q': S['q']}
-ctrls['TMPC-2'] = tuner.create_mpc('tracking', Nmpc, tuning = tuningTn2, opts= opts)
+# # manually tuned tracking MPC
+# Ht2 = [np.diag([0.1,0.1,0.1, 1.0, 1.0, 1.0, 1.0e3, 1.0, 100.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0])]*user_input['p']
+# tuningTn2 = {'H': Ht2, 'q': S['q']}
+# ctrls['TMPC-2'] = tuner.create_mpc('tracking', Nmpc, tuning = tuningTn2, opts= opts)
 
 # tuned tracking MPC
 ctrls['TUNEMPC'] = tuner.create_mpc('tuned', Nmpc, opts = opts)
+
+ACADOS_CODEGENERATE = True
+if ACADOS_CODEGENERATE:
+
+    # get system dae
+    alg = user_input['dyn']
+
+    # solver options
+    opts = {}
+    opts['qp_solver'] = 'FULL_CONDENSING_QPOASES' # PARTIAL_CONDENSING_HPIPM
+    opts['hessian_approx'] = 'GAUSS_NEWTON'
+    opts['integrator_type'] = 'IRK'
+    opts['nlp_solver_type'] = 'SQP' # SQP_RTI
+    # opts['qp_solver_cond_N'] = Nmpc # ???
+    opts['print_level'] = 1
+    opts['sim_method_num_steps'] = 50
+    opts['tf'] = Nmpc*user_input['ts']
+    opts['nlp_solver_max_iter'] = 50
+    opts['nlp_solver_step_length'] = 0.9
+
+    acados_ocp_solver, acados_integrator = ctrls['TUNEMPC'].generate(
+        alg, opts = opts, name = 'awe_system'
+        )
+
+x0 = wsol['x',0]
+u0 = ctrls['TUNEMPC'].step_acados(x0)
+sol = ctrls['TUNEMPC'].w_sol_acados
 
 # initialize and set-up open-loop simulation
 alpha = np.linspace(-1.0, 1.0, alpha_steps+1) # deviation sweep grid
@@ -119,6 +144,61 @@ dz = 8 # max. deviation
 x0 = wsol['x',0]
 tgrid = [1/user_input['p']*i for i in range(Nmpc)]
 tgridx = tgrid + [tgrid[-1]+1/user_input['p']]
+
+# optimal stage cost and constraints for comparison
+lOpt, hOpt = [], []
+for k in range(Nmpc):
+    lOpt.append(user_input['l'](wsol['x', k%user_input['p']], wsol['u',k%user_input['p']]).full()[0][0])
+    hOpt.append(user_input['h'](wsol['x', k%user_input['p']], wsol['u',k%user_input['p']]).full())
+
+plt.figure(0)
+for i in range(nu):
+    plt.subplot(nu, 1, i+1)
+    if i == 0:
+        plt.title('Control prediction deviation')
+    # plt.step(tgrid, [ for k in range(Nmpc)], color = 'black', linestyle = '--', where='post')
+    plt.step(tgrid, [sol['u',k,i]-wsol['u',k,i] for k in range(Nmpc)], where = 'post')
+    plt.hlines(0.0, tgrid[0], tgrid[-1], linestyle ='--')
+    plt.grid(True)
+    plt.ylabel('Delta u{}'.format(i))
+    plt.autoscale(enable=True, axis='x', tight=True)
+    plt.legend(['prediction'])
+
+hSol = []
+for k in range(Nmpc):
+    hSol.append(user_input['h'](sol['x',k], sol['u',k]).full())
+
+nh = hSol[0].shape[0]
+ncol = 3
+nrow = int(np.ceil(nh/ncol))
+fig, axes = plt.subplots(nrow, ncol, sharex = 'col', num=1)
+for i in range(nh):
+    axes[i//ncol, i%ncol].step(tgrid, [hOpt[k][i] for k in range(Nmpc)], color = 'black', linestyle = '--', where='post')
+    axes[i//ncol, i%ncol].step(tgrid, [hSol[k][i] for k in range(Nmpc)])
+    axes[i//ncol, i%ncol].grid(True)
+    axes[i//ncol, i%ncol].hlines(0.0, tgrid[0], tgrid[-1])
+    axes[i//ncol, i%ncol].grid(True)
+    axes[i//ncol, i%ncol].set_ylabel('h{}'.format(i))
+    axes[i//ncol, i%ncol].autoscale(enable=True, axis='x', tight=True)
+    if i == 0:
+        axes[k//ncol, k%ncol].legend(['reference', 'prediction'])
+
+plt.figure(2)
+for i in range(nx):
+    plt.subplot(nx, 1, i+1)
+    if i == 0:
+        plt.title('State prediction')
+    # plt.plot(tgrid, [wsol['x',k,i] for k in range(Nmpc)], color = 'black', linestyle = '--')
+    plt.plot(tgrid, [sol['x',k,i]-wsol['x',k,i] for k in range(Nmpc)])
+    plt.hlines(0.0, tgrid[0], tgrid[-1], linestyle ='--')
+    plt.grid(True)
+    plt.ylabel('Delta x{}'.format(i))
+    plt.autoscale(enable=True, axis='x', tight=True)
+    if i == 0:
+        plt.legend(['reference', 'prediction'])
+plt.show()
+import ipdb; ipdb.set_trace()
+
 
 # open loop simulation
 import copy
@@ -132,11 +212,6 @@ for alph in alpha:
     for name in list(ctrls.keys()):
         ctrls[name].reset()
 
-# optimal stage cost and constraints for comparison
-lOpt, hOpt = [], []
-for k in range(Nmpc):
-    lOpt.append(user_input['l'](wsol['x', k%user_input['p']], wsol['u',k%user_input['p']]).full()[0][0])
-    hOpt.append(user_input['h'](wsol['x', k%user_input['p']], wsol['u',k%user_input['p']]).full())
 
 # plotting options
 alpha_plot = -1

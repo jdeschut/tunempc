@@ -621,6 +621,7 @@ class Pmpc(object):
         # for each starting point in period
         ref_pr = []
         ref_du = []
+        ref_du_struct = []
         H   = []
         q   = []
 
@@ -657,6 +658,7 @@ class Pmpc(object):
 
             ref_pr.append(ct.vertcat(*refk))
             ref_du.append(lamgk.cat)
+            ref_du_struct.append(lamgk)
 
             if tuning is not None:
                 H.append([tuning['H'][(k+j)%self.__Nref] for j in range(self.__N)])
@@ -664,6 +666,7 @@ class Pmpc(object):
 
         self.__ref    = ref_pr
         self.__ref_du = ref_du
+        self.__ref_du_struct = ref_du_struct
         self.__Href = H
         self.__qref = q
 
@@ -863,10 +866,35 @@ class Pmpc(object):
             self.__acados_ocp_solver.set(i, "x", xref)
             self.__acados_ocp_solver.set(i, "u", uref)
 
+            # set dual initial guess
+            ref_dual = self.__ref_du_struct[idx]
+            self.__acados_ocp_solver.set(i, "pi", np.squeeze(ref_dual['dyn',i].full()))
+
+            # the inequalities are internally organized in the following order:
+            # [ lbu lbx lg lh ubu ubx ug uh ]
+            lam_h = []
+            if i == 0:
+                lam_h.append(ref_dual['init'])  # lbx_0
+            if 'h' in list(ref_dual.keys()):
+                lam_h.append(-ref_dual['h',i][:ref_dual['h',i].shape[0]-self.__nsc]) # lg
+            if 'g' in list(ref_dual.keys()):
+                lam_h.append(ref_dual['g',i]) # lh
+            if i == 0: 
+                lam_h.append(np.zeros((self.__nx,))) # ubx_0
+            if 'h' in list(ref_dual.keys()):
+                lam_h.append(np.zeros((ref_dual['h',i].shape[0]- self.__nsc,))) # ug
+            if 'g' in list(ref_dual.keys()):
+                lam_h.append(np.zeros((ref_dual['g',i].shape[0],))) # uh
+            self.__acados_ocp_solver.set(i, "lam", np.squeeze(ct.vertcat(*lam_h).full()))
+
         # terminal state
         idx = (self.__index_acados+self.__N)%self.__Nref
         xref = np.squeeze(self.__ref[idx][:self.__nx], axis = 1)
         self.__acados_ocp_solver.set(self.__N, "x", xref)
+
+        # terminal multipliers
+        lam_term = np.squeeze(ct.vertcat(ref_dual['term'],np.zeros((ref_dual['term'].shape[0],))).full())
+        self.__acados_ocp_solver.set(self.__N, "lam", lam_term)
 
         return None
 

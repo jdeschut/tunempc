@@ -561,8 +561,9 @@ class Pmpc(object):
             C = self.__S['C'][0][:,:nx]
             D = self.__S['C'][0][:,nx:]
             lg = -self.__S['e'][0] + ct.mtimes(C,xref).full() + ct.mtimes(D,uref).full()
+            ug = 1e15 - self.__S['e'][0] + ct.mtimes(C,xref).full() + ct.mtimes(D,uref).full()
             ocp.constraints.lg = np.squeeze(lg, axis = 1)
-            ocp.constraints.ug = 1e15*np.ones((lg.shape[0],))
+            ocp.constraints.ug = np.squeeze(ug, axis = 1)
             ocp.constraints.C  = C
             ocp.constraints.D  = D
             
@@ -873,19 +874,28 @@ class Pmpc(object):
             # the inequalities are internally organized in the following order:
             # [ lbu lbx lg lh ubu ubx ug uh ]
             lam_h = []
+            t = []
             if i == 0:
                 lam_h.append(ref_dual['init'])  # lbx_0
+                t.append(np.zeros((self.__nx,)))
             if 'h' in list(ref_dual.keys()):
                 lam_h.append(-ref_dual['h',i][:ref_dual['h',i].shape[0]-self.__nsc]) # lg
+                t.append(self.__S['e'][i%self.__Nref])
             if 'g' in list(ref_dual.keys()):
                 lam_h.append(ref_dual['g',i]) # lh
-            if i == 0: 
+                t.append(np.zeros((ref_dual['g',i].shape[0],)))
+            if i == 0:
                 lam_h.append(np.zeros((self.__nx,))) # ubx_0
+                t.append(np.zeros((self.__nx,)))
             if 'h' in list(ref_dual.keys()):
                 lam_h.append(np.zeros((ref_dual['h',i].shape[0]- self.__nsc,))) # ug
+                t.append(1e15*np.ones((ref_dual['h',i].shape[0]- self.__nsc,1))-self.__S['e'][i%self.__Nref])
+                print(self.__S['e'][i%self.__Nref])
             if 'g' in list(ref_dual.keys()):
                 lam_h.append(np.zeros((ref_dual['g',i].shape[0],))) # uh
+                t.append(np.zeros((ref_dual['g',i].shape[0],)))
             self.__acados_ocp_solver.set(i, "lam", np.squeeze(ct.vertcat(*lam_h).full()))
+            self.__acados_ocp_solver.set(i, "t", np.squeeze(ct.vertcat(*t).full()))
 
         # terminal state
         idx = (self.__index_acados+self.__N)%self.__Nref

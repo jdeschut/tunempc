@@ -890,7 +890,6 @@ class Pmpc(object):
             if 'h' in list(ref_dual.keys()):
                 lam_h.append(np.zeros((ref_dual['h',i].shape[0]- self.__nsc,))) # ug
                 t.append(1e15*np.ones((ref_dual['h',i].shape[0]- self.__nsc,1))-self.__S['e'][i%self.__Nref])
-                print(self.__S['e'][i%self.__Nref])
             if 'g' in list(ref_dual.keys()):
                 lam_h.append(np.zeros((ref_dual['g',i].shape[0],))) # uh
                 t.append(np.zeros((ref_dual['g',i].shape[0],)))

@@ -565,6 +565,26 @@ class Pmpc(object):
             ocp.constraints.ug = 1e15*np.ones((lg.shape[0],))
             ocp.constraints.C  = C
             ocp.constraints.D  = D
+            
+            if 'usc' in self.__vars:
+                Jsg = ca.Function(
+                    'Jsg',
+                    [self.__vars['usc']],
+                    [ca.jacobian(
+                        self.__h(
+                            self.__vars['x'],
+                            self.__vars['u'],
+                            self.__vars['us'],
+                            self.__vars['usc']
+                            ),
+                        self.__vars['usc']
+                    )]
+                )(0.0)
+                ocp.constraints.Jsg = Jsg.full()[:-self.__nsc,:]
+                ocp.cost.Zl = np.zeros((self.__nsc,))
+                ocp.cost.Zu = np.zeros((self.__nsc,))
+                ocp.cost.zl = np.squeeze(self.__scost.full())
+                ocp.cost.zu = np.squeeze(self.__scost.full())
 
         # set nonlinear equality constraints
         if self.__gnl is not None:

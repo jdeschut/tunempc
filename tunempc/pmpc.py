@@ -844,6 +844,14 @@ class Pmpc(object):
             # update tuning matrix
             self.__acados_ocp_solver.cost_set(i, 'W', self.__Href[idx][0])
 
+            # update constraint bounds
+            C = self.__S['C'][idx][:,:self.__nx]
+            D = self.__S['C'][idx][:,self.__nx:]
+            lg = -self.__S['e'][idx] + ct.mtimes(C,xref).full() + ct.mtimes(D,uref).full()
+            ug = 1e8 - self.__S['e'][idx] + ct.mtimes(C,xref).full() + ct.mtimes(D,uref).full()
+            self.__acados_ocp_solver.constraints_set(i, 'lg', np.squeeze(lg, axis = 1))
+            self.__acados_ocp_solver.constraints_set(i, 'ug', np.squeeze(ug, axis = 1))
+
         # update terminal constraint
         idx = (self.__index_acados+self.__N)%self.__Nref
         x_term = np.squeeze(self.__p_operator(self.__ref[idx][:self.__nx]), axis = 1)

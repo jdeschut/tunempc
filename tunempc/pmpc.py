@@ -568,24 +568,24 @@ class Pmpc(object):
             ocp.constraints.D  = D
             
             if 'usc' in self.__vars:
+                if 'us' in self.__vars:
+                    arg = [self.__vars['x'],self.__vars['u'], self.__vars['us'],self.__vars['usc']]
+                else:
+                    arg = [self.__vars['x'],self.__vars['u'],self.__vars['usc']]
                 Jsg = ca.Function(
                     'Jsg',
                     [self.__vars['usc']],
                     [ca.jacobian(
-                        self.__h(
-                            self.__vars['x'],
-                            self.__vars['u'],
-                            self.__vars['us'],
-                            self.__vars['usc']
-                            ),
+                        self.__h(*arg),
                         self.__vars['usc']
                     )]
                 )(0.0)
-                ocp.constraints.Jsg = Jsg.full()[:-self.__nsc,:]
+                self.__Jsg = Jsg.full()[:-self.__nsc,:]
+                ocp.constraints.Jsg = self.__Jsg
                 ocp.cost.Zl = np.zeros((self.__nsc,))
                 ocp.cost.Zu = np.zeros((self.__nsc,))
-                ocp.cost.zl = np.squeeze(self.__scost.full())
-                ocp.cost.zu = np.squeeze(self.__scost.full())
+                ocp.cost.zl = np.squeeze(self.__scost.full(), axis = 1)
+                ocp.cost.zu = np.squeeze(self.__scost.full(), axis = 1)
 
         # set nonlinear equality constraints
         if self.__gnl is not None:
@@ -879,7 +879,8 @@ class Pmpc(object):
                 lam_h.append(ref_dual['init'])  # lbx_0
                 t.append(np.zeros((self.__nx,)))
             if 'h' in list(ref_dual.keys()):
-                lam_h.append(-ref_dual['h',i][:ref_dual['h',i].shape[0]-self.__nsc]) # lg
+                lam_lh = -ref_dual['h',i][:ref_dual['h',i].shape[0]-self.__nsc]
+                lam_h.append(lam_lh) # lg
                 t.append(self.__S['e'][i%self.__Nref])
             if 'g' in list(ref_dual.keys()):
                 lam_h.append(ref_dual['g',i]) # lh
@@ -889,10 +890,16 @@ class Pmpc(object):
                 t.append(np.zeros((self.__nx,)))
             if 'h' in list(ref_dual.keys()):
                 lam_h.append(np.zeros((ref_dual['h',i].shape[0]- self.__nsc,))) # ug
-                t.append(1e15*np.ones((ref_dual['h',i].shape[0]- self.__nsc,1))-self.__S['e'][i%self.__Nref])
+                t.append(1e8*np.ones((ref_dual['h',i].shape[0]- self.__nsc,1))-self.__S['e'][i%self.__Nref])
             if 'g' in list(ref_dual.keys()):
                 lam_h.append(np.zeros((ref_dual['g',i].shape[0],))) # uh
                 t.append(np.zeros((ref_dual['g',i].shape[0],)))
+            if self.__nsc > 0:
+                lam_sl = self.__scost - ct.mtimes(lam_lh.T,self.__Jsg).T
+                lam_h.append(lam_sl) # ls
+                lam_h.append(self.__scost) # us
+                t.append(np.zeros((self.__nsc,))) # slg > 0
+                t.append(np.zeros((self.__nsc,))) # sug > 0
             self.__acados_ocp_solver.set(i, "lam", np.squeeze(ct.vertcat(*lam_h).full()))
             self.__acados_ocp_solver.set(i, "t", np.squeeze(ct.vertcat(*t).full()))
 

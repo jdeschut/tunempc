@@ -561,7 +561,7 @@ class Pmpc(object):
             C = self.__S['C'][0][:,:nx]
             D = self.__S['C'][0][:,nx:]
             lg = -self.__S['e'][0] + ct.mtimes(C,xref).full() + ct.mtimes(D,uref).full()
-            ug = 1e15 - self.__S['e'][0] + ct.mtimes(C,xref).full() + ct.mtimes(D,uref).full()
+            ug = 1e8 - self.__S['e'][0] + ct.mtimes(C,xref).full() + ct.mtimes(D,uref).full()
             ocp.constraints.lg = np.squeeze(lg, axis = 1)
             ocp.constraints.ug = np.squeeze(ug, axis = 1)
             ocp.constraints.C  = C

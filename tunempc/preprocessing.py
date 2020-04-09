@@ -116,7 +116,7 @@ def add_mpc_slacks(sys, lam_g, active_set, slack_flag = 'active'):
         for i in range(h_expr.shape[0]):
             if slacks[i]:
                 h_slack.append(usc[j])
-                slack_cost.append(1e3*np.max(-ca.vertcat(*lam_g['h',:,i]).full()))
+                slack_cost.append(1e1*np.max(-ca.vertcat(*lam_g['h',:,i]).full()))
                 j = j+1
             else:
                 h_slack.append(0.0)

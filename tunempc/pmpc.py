@@ -887,21 +887,21 @@ class Pmpc(object):
                 lam_h.append(ref_dual['init'])  # lbx_0
                 t.append(np.zeros((self.__nx,)))
             if 'h' in list(ref_dual.keys()):
-                lam_lh = -ref_dual['h',i][:ref_dual['h',i].shape[0]-self.__nsc]
+                lam_lh = -ref_dual['h',0][:ref_dual['h',0].shape[0]-self.__nsc]
                 lam_h.append(lam_lh) # lg
-                t.append(self.__S['e'][i%self.__Nref])
+                t.append(self.__S['e'][idx%self.__Nref])
             if 'g' in list(ref_dual.keys()):
-                lam_h.append(ref_dual['g',i]) # lh
-                t.append(np.zeros((ref_dual['g',i].shape[0],)))
+                lam_h.append(ref_dual['g',0]) # lh
+                t.append(np.zeros((ref_dual['g',0].shape[0],)))
             if i == 0:
                 lam_h.append(np.zeros((self.__nx,))) # ubx_0
                 t.append(np.zeros((self.__nx,)))
             if 'h' in list(ref_dual.keys()):
-                lam_h.append(np.zeros((ref_dual['h',i].shape[0]- self.__nsc,))) # ug
-                t.append(1e8*np.ones((ref_dual['h',i].shape[0]- self.__nsc,1))-self.__S['e'][i%self.__Nref])
+                lam_h.append(np.zeros((ref_dual['h',0].shape[0]- self.__nsc,))) # ug
+                t.append(1e8*np.ones((ref_dual['h',0].shape[0]- self.__nsc,1))-self.__S['e'][idx])
             if 'g' in list(ref_dual.keys()):
-                lam_h.append(np.zeros((ref_dual['g',i].shape[0],))) # uh
-                t.append(np.zeros((ref_dual['g',i].shape[0],)))
+                lam_h.append(np.zeros((ref_dual['g',0].shape[0],))) # uh
+                t.append(np.zeros((ref_dual['g',0].shape[0],)))
             if self.__nsc > 0:
                 lam_sl = self.__scost - ct.mtimes(lam_lh.T,self.__Jsg).T
                 lam_h.append(lam_sl) # ls

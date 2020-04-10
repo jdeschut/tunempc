@@ -29,6 +29,7 @@ import tunempc.preprocessing as preprocessing
 import tunempc.pocp as pocp
 import tunempc.convexifier as convexifier
 import tunempc.pmpc as pmpc
+import tunempc.mtools as mtools
 import casadi as ca
 import casadi.tools as ct
 import numpy as np
@@ -177,7 +178,7 @@ class Tuner(object):
         if mpc_type == 'economic':
             mpc = pmpc.Pmpc(N = N, sys = mpc_sys, cost = self.__l, wref = self.__w_sol, lam_g_ref=self.__ocp.lam_g, options=opts)
         else:
-            cost = self.__tracking_cost(self.__nx+self.__nu+self.__nus)
+            cost = mtools.tracking_cost(self.__nx+self.__nu+self.__nus)
             lam_g0 = copy.deepcopy(self.__ocp.lam_g)
             lam_g0['dyn'] = 0.0
             if 'g' in lam_g0.keys():
@@ -191,23 +192,6 @@ class Tuner(object):
             mpc = pmpc.Pmpc(N = N, sys = mpc_sys, cost = cost, wref = self.__w_sol, tuning = tuning, lam_g_ref=lam_g0, options=opts)
         
         return mpc
-
-    def __tracking_cost(self, nw):
-
-        """ Create tracking cost function
-        """
-
-        # reference parameters
-        w =  ca.MX.sym('w', (nw, 1))
-        wref = ca.MX.sym('wref', (nw, 1))
-        H = ca.MX.sym('H', (nw, nw))
-        q = ca.MX.sym('H', (nw, 1))
-
-        # cost definition
-        dw   = w - wref
-        obj = 0.5*ct.mtimes(dw.T, ct.mtimes(H, dw)) + ct.mtimes(q.T,dw)
-
-        return ca.Function('tracking_cost',[w, wref, H, q],[obj])
 
     def __log_license_info(self):
 

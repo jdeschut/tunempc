@@ -170,29 +170,9 @@ if ACADOS_CODEGENERATE:
         alg, opts = opts, name = 'awe_system'
         )
 
-lam0 = []
-t0 = []
-for i in range(Nmpc):
-    lam0.append(ctrls['TUNEMPC'].acados_ocp_solver.get(i,'lam'))
-    t0.append(ctrls['TUNEMPC'].acados_ocp_solver.get(i,'t'))
-lam0.append(ctrls['TUNEMPC'].acados_ocp_solver.get(Nmpc,'lam'))
-t0.append(ctrls['TUNEMPC'].acados_ocp_solver.get(Nmpc,'t'))
-
-x0 = sol['wsol']['x',0]
-u0 = ctrls['TUNEMPC'].step_acados(x0)
-test_sol = ctrls['TUNEMPC'].w_sol_acados
-
-lam_sol = []
-t_sol = []
-for i in range(Nmpc):
-    lam_sol.append(ctrls['TUNEMPC'].acados_ocp_solver.get(i,'lam'))
-    t_sol.append(ctrls['TUNEMPC'].acados_ocp_solver.get(i,'t'))
-lam_sol.append(ctrls['TUNEMPC'].acados_ocp_solver.get(Nmpc,'lam'))
-t_sol.append(ctrls['TUNEMPC'].acados_ocp_solver.get(Nmpc,'t'))
-
 # initialize and set-up open-loop simulation
 alpha = np.linspace(-1.0, 1.0, alpha_steps+1) # deviation sweep grid
-dz = 8 # max. deviation
+dz = 4 # max. deviation
 x0 = sol['wsol']['x',0]
 tgrid = [1/user_input['p']*i for i in range(Nmpc)]
 tgridx = tgrid + [tgrid[-1]+1/user_input['p']]
@@ -202,62 +182,6 @@ lOpt, hOpt = [], []
 for k in range(Nmpc):
     lOpt.append(user_input['l'](sol['wsol']['x', k%user_input['p']], sol['wsol']['u',k%user_input['p']]).full()[0][0])
     hOpt.append(user_input['h'](sol['wsol']['x', k%user_input['p']], sol['wsol']['u',k%user_input['p']]).full())
-
-plt.figure(0)
-for i in range(nu):
-    plt.subplot(nu, 1, i+1)
-    if i == 0:
-        plt.title('Control prediction deviation')
-    # plt.step(tgrid, [ for k in range(Nmpc)], color = 'black', linestyle = '--', where='post')
-    plt.step(tgrid, [test_sol['u',k,i]-sol['wsol']['u',k,i] for k in range(Nmpc)], where = 'post')
-    plt.hlines(0.0, tgrid[0], tgrid[-1], linestyle ='--')
-    plt.grid(True)
-    plt.ylabel('Delta u{}'.format(i))
-    plt.autoscale(enable=True, axis='x', tight=True)
-
-hSol = []
-for k in range(Nmpc):
-    hSol.append(user_input['h'](test_sol['x',k], test_sol['u',k]).full())
-
-nh = hSol[0].shape[0]
-ncol = 3
-nrow = int(np.ceil(nh/ncol))
-fig, axes = plt.subplots(nrow, ncol, sharex = 'col', num=1)
-for i in range(nh):
-    axes[i//ncol, i%ncol].step(tgrid, [hOpt[k][i] for k in range(Nmpc)], color = 'black', linestyle = '--', where='post')
-    axes[i//ncol, i%ncol].step(tgrid, [hSol[k][i] for k in range(Nmpc)], where = 'post')
-    axes[i//ncol, i%ncol].grid(True)
-    axes[i//ncol, i%ncol].hlines(0.0, tgrid[0], tgrid[-1])
-    axes[i//ncol, i%ncol].grid(True)
-    axes[i//ncol, i%ncol].set_ylabel('h{}'.format(i))
-    axes[i//ncol, i%ncol].autoscale(enable=True, axis='x', tight=True)
-
-plt.figure(2)
-for i in range(nx):
-    plt.subplot(nx, 1, i+1)
-    if i == 0:
-        plt.title('State prediction')
-    # plt.plot(tgrid, [wsol['x',k,i] for k in range(Nmpc)], color = 'black', linestyle = '--')
-    plt.plot(tgrid, [test_sol['x',k,i]-sol['wsol']['x',k,i] for k in range(Nmpc)])
-    plt.hlines(0.0, tgrid[0], tgrid[-1], linestyle ='--')
-    plt.grid(True)
-    plt.ylabel('Delta x{}'.format(i))
-    plt.autoscale(enable=True, axis='x', tight=True)
-
-plt.figure(3)
-for i in range(3):
-    plt.subplot(3,1,i+1)
-    if i == 0:
-        plt.title('Slacked equalities')
-    plt.step(tgrid, [sol['sys']['g'](test_sol['x',k], test_sol['u',k], test_sol['us',k])[i] for k in range(Nmpc)])
-    plt.hlines(0.0, tgrid[0], tgrid[-1], linestyle ='--')
-    plt.grid(True)
-    plt.ylabel('g{}'.format(i))
-    plt.autoscale(enable=True, axis='x', tight=True)
-
-import ipdb; ipdb.set_trace()
-plt.show()
-
 
 # open loop simulation
 import copy
@@ -280,7 +204,6 @@ for alph in alpha:
             flag = 'acados')[-1])
     for name in list(ctrls.keys()):
         ctrls[name].reset()
-
 
 # plotting options
 alpha_plot = -1

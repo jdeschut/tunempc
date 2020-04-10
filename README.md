@@ -38,16 +38,6 @@ w_opt  = tuner.solve_ocp() # compute optimal p-periodic trajectory
 [H, q] = tuner.convexify() # compute economically tuned stage cost matrices
 ```
 
-Use the standard outputs to create a positive-definite tracking scheme cost `J` that is a quadratic approximation of the economic MPC cost:
-
-``` python
-J = 0
-for k in range(<insert MPC horizon>): # loop over prediction horizon
-     w_k  = ca.MX.sym('w',<nx+nu>) # create MPC stage variables
-     dw_k = w_k - ca.vertcat(w_opt['x',k%p], w_opt['u',k%p]) # tracking error
-     J += 0.5*ca.mtimes(ca.mtimes(dw_k.T, H[k%p]), dw_k) + ca.mtimes(q[k%p], dw_k) # add stage cost
-```
-
 ## Installation
 
 **TuneMPC** requires Python 3.5 or later.

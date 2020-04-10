@@ -48,45 +48,32 @@ for k in range(<insert MPC horizon>): # loop over prediction horizon
      J += 0.5*ca.mtimes(ca.mtimes(dw_k.T, H[k%p]), dw_k) + ca.mtimes(q[k%p], dw_k) # add stage cost
 ```
 
-
-
 ## Installation
 
 **TuneMPC** requires Python 3.5 or later.
 
-1.   Install dependencies:
-
-     ```
-     pip3 install casadi==3.5.1 picos scipy
-     ```
-
-2.   Get a local copy of `tunempc`:
+1.  Get a local copy of `tunempc`:
 
      ```
      git clone https://github.com/jdeschut/tunempc.git
      ```
 
+2.   Install the package with dependencies:
+
+     ```
+     pip3 install <path_to_root_folder>/tunempc
+     ```
+
 3. (optional) Install MOSEK SDP solver (free [academic licenses](https://www.mosek.com/products/academic-licenses/) available)
 
      ```
-     pip3 install -f https://download.mosek.com/stable/wheel/index.html Mosek
+     pip3 install -f https://download.mosek.com/stable/wheel/index.html Mosek==9.0.98
      ```
-4.   (optional) It is recommended to use HSL linear solvers as a plugin with IPOPT.
+
+4.  (optional) Install the [acados](https://github.com/acados/acados/) software package for generating fast and embedded TuneMPC solvers. Follow these [instructions](https://github.com/acados/acados/blob/master/interfaces/acados_template/README.md) to install the Python interface.
+
+5.  (optional) It is recommended to use HSL linear solvers as a plugin with IPOPT.
  In order to get the HSL solvers and render them visible to CasADi, follow these [instructions](https://github.com/casadi/casadi/wiki/Obtaining-HSL).
-
-## Getting started
-
-Add `tunempc` to the PYTHONPATH environment variable (add those lines to your .bashrc or .zshrc to set the paths permanently).
-
-```
-export PYTHONPATH=<path_to_tunempc_root_folder>:$PYTHONPATH
-```
-
-To run one of the examples from the `tunempc` root folder:
-
-```
-python3 examples/convex_lqr.py
-```
 
 ## Acknowledgments
 

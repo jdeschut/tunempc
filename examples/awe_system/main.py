@@ -15,7 +15,7 @@
 #    Lesser General Public License for more details.
 #
 #    You should have received a copy of the GNU Lesser General Public
-#    License along with awebox; if not, write to the Free Software Foundation,
+#    License along with TuneMPC; if not, write to the Free Software Foundation,
 #    Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 #
 #
@@ -34,14 +34,7 @@ J. De Schutter, M. Zanon, M. Diehl
 
 """
 
-import matplotlib.pyplot as plt
 import tunempc
-import tunempc.pmpc as pmpc
-import tunempc.preprocessing as preprocessing
-import tunempc.closed_loop_tools as clt
-import numpy as np
-import casadi as ca
-import casadi.tools as ct
 import pickle
 
 # load user input
@@ -61,186 +54,24 @@ wsol = tuner.solve_ocp(w0 = user_input['w0'])
 
 # convexify stage cost matrices
 Hc   = tuner.convexify(solver='mosek')
+S    = tuner.S
 
-# extract OCP sensitivities at optimal solution
-[Hlag, q, A, B, C_As, D] = tuner.pocp.get_sensitivities()
-
-# set-up open-loop scenario
-Nmpc  = 20
-alpha_steps = 20
-
-# tether length
-l_t = np.sqrt(
-    wsol['x',0][0]**2 +
-    wsol['x',0][1]**2 +
-    wsol['x',0][2]**2
-)
-
-# state and control dimensions
 sys = tuner.sys
-nx = sys['vars']['x'].shape[0]
-nu = sys['vars']['u'].shape[0]
+sys['vars'] = {
+    'x': sys['vars']['x'].shape,
+    'u': sys['vars']['u'].shape,
+    'us': sys['vars']['us'].shape
+    }
 
-
-# mpc options:
-opts = {}
-# add projection operator for terminal constraint
-opts['p_operator'] = ca.Function(
-    'p_operator',
-    [sys['vars']['x']],
-    [ct.vertcat(sys['vars']['x'][1:3],
-    sys['vars']['x'][4:])]
-)
-
-# slack active constraints
-opts['slack_flag'] = 'active'
-
-# create controllers
-ctrls = {}
-
-# economic MPC
-ctrls['EMPC'] = tuner.create_mpc('economic', Nmpc,opts=opts)
-
-# standard tracking MPC
-tuningTn = {'H': [np.diag((nx+nu)*[1]+sys['vars']['us'].shape[0]*[0.0])]*user_input['p'], 'q': q}
-ctrls['TMPC-1'] = tuner.create_mpc('tracking', Nmpc, tuning = tuningTn, opts = opts)
-
-# manually tuned tracking MPC
-Ht2 = [np.diag([0.1,0.1,0.1, 1.0, 1.0, 1.0, 1.0e3, 1.0, 100.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0])]*user_input['p']
-tuningTn2 = {'H': Ht2, 'q': q}
-ctrls['TMPC-2'] = tuner.create_mpc('tracking', Nmpc, tuning = tuningTn2, opts= opts)
-
-# tuned tracking MPC
-ctrls['TUNEMPC'] = tuner.create_mpc('tuned', Nmpc, opts = opts)
-
-# initialize and set-up open-loop simulation
-alpha = np.linspace(-1.0, 1.0, alpha_steps+1) # deviation sweep grid
-dz = 8 # max. deviation
-x0 = wsol['x',0]
-tgrid = [1/user_input['p']*i for i in range(Nmpc)]
-tgridx = tgrid + [tgrid[-1]+1/user_input['p']]
-
-# open loop simulation
-import copy
-log = []
-for alph in alpha:
-    x_init = copy.deepcopy(x0)
-    x_init[2] = x_init[2] + alph*dz
-    x_init[0] = np.sqrt(-x_init[2]**2-x_init[1]**2+(l_t)**2)
-    x_init[5] = -(x_init[0]*x_init[3] + x_init[1]*x_init[4]) / x_init[2]
-    log.append(clt.check_equivalence(ctrls, user_input['l'], user_input['h'], x0, x_init-x0, [1.0])[-1])
-    for name in list(ctrls.keys()):
-        ctrls[name].reset()
-
-# optimal stage cost and constraints for comparison
-lOpt, hOpt = [], []
-for k in range(Nmpc):
-    lOpt.append(user_input['l'](wsol['x', k%user_input['p']], wsol['u',k%user_input['p']]).full()[0][0])
-    hOpt.append(user_input['h'](wsol['x', k%user_input['p']], wsol['u',k%user_input['p']]).full())
-
-# plotting options
-alpha_plot = -1
-lw = 2
-ctrls_colors = {
-    'EMPC': 'blue',
-    'TUNEMPC': 'green',
-    'TMPC-1': 'red',
-    'TMPC-2': 'orange'
-}
-ctrl_lstyle = {
-    'EMPC': 'solid',
-    'TUNEMPC': 'dashed',
-    'TMPC-1': 'dashdot',
-    'TMPC-2': 'dotted'
-}
-ctrls_markers =  {
-    'EMPC': '.',
-    'TUNEMPC': 'o',
-    'TMPC-1': '^',
-    'TMPC-2': 'x'
+sol = {
+    'S': S,
+    'wsol': wsol,
+    'lam_g': tuner.pocp.lam_g,
+    'indeces_As': tuner.pocp.indeces_As,
+    'sys': sys,
 }
 
-# plot feedback equivalence
-plt.figure(1)
-for name in list(ctrls.keys()):
-    if name != 'EMPC':
-        feedback_norm = [
-            np.linalg.norm(
-                np.divide(
-                    np.array(log[k]['u'][name][0]) - np.array(log[k]['u']['EMPC'][0]),
-                    np.array(log[0]['u']['EMPC'][0]))
-            ) for k in range(len(alpha))]
-        plt.plot(
-            [dz*alph for alph in alpha],
-            feedback_norm,
-            marker = ctrls_markers[name],
-            color = ctrls_colors[name],
-            linestyle = ctrl_lstyle[name],
-            markersize=2,
-            linewidth=lw
-                )
-plt.grid(True)
-plt.legend(list(ctrls.keys())[1:])
-plt.title(r'$\Delta \pi_0^{\star}(\hat{x}_0) \ [-]$')
-plt.xlabel(r'$\Delta z \ \mathrm{[m]}$')
-
-# plot stage cost deviation over time
-plt.figure(2)
-for name in list(ctrls.keys()):
-    stage_cost_dev = [x[0] - x[1] for x in zip(log[alpha_plot]['l'][name],lOpt)]
-    plt.step(
-        tgrid,
-        stage_cost_dev,
-        color = ctrls_colors[name],
-        linestyle = ctrl_lstyle[name],
-        linewidth=lw,
-        where='post')
-plt.legend(list(ctrls.keys()))
-plt.grid(True)
-plt.xlabel('t - [s]')
-plt.title('Stage cost deviation')
-plt.autoscale(enable=True, axis='x', tight=True)
-
-# plot state deviation over time
-plt.subplots(nx,1,sharex = True)
-for i in range(nx):
-    plt.subplot(nx,1,i+1)
-    if i == 0:
-        plt.title('State deviation')
-    if i == nx:
-        plt.xlabel('t - [s]')
-
-    for name in list(ctrls.keys()):
-        plt.plot(
-            tgridx,
-            [log[alpha_plot]['x'][name][j][i] - wsol['x',j][i] for j in range(Nmpc+1)],
-            color = ctrls_colors[name],
-            linestyle = ctrl_lstyle[name],
-            linewidth=lw)
-        plt.plot(tgridx, [0.0 for j in range(Nmpc+1)],  linestyle='--', color='black')
-        plt.autoscale(enable=True, axis='x', tight=True)
-        plt.grid(True)
-
-# plot transient cost vs. alpha
-plt.figure(4)
-transient_cost = {}
-for name in list(ctrls.keys()):
-    transient_cost[name] = []
-    for i in range(len(alpha)):
-            transient_cost[name].append(
-                sum([x[0] - x[1] for x in zip(log[i]['l'][name],lOpt)])
-                )
-    plt.plot(
-        alpha,
-        transient_cost[name],
-        marker = ctrls_markers[name],
-        color = ctrls_colors[name],
-        linestyle = ctrl_lstyle[name],
-        markersize = 2,
-        linewidth=lw)
-plt.grid(True)
-plt.legend(list(ctrls))
-plt.title('Transient cost')
-plt.xlabel(r'$\alpha \ \mathrm{[-]}$')
-
-plt.show()
+SAVE = True
+if SAVE:
+    with open('convex_reference.pkl','wb') as f:
+        pickle.dump(sol,f)

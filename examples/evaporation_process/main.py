@@ -15,7 +15,7 @@
 #    Lesser General Public License for more details.
 #
 #    You should have received a copy of the GNU Lesser General Public
-#    License along with awebox; if not, write to the Free Software Foundation,
+#    License along with TuneMPC; if not, write to the Free Software Foundation,
 #    Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 #
 #
@@ -100,7 +100,7 @@ def dynamics(x, u, data):
     # create ode for integrator
     ode = {'x':x, 'p':u,'ode': xdot}
 
-    return ca.integrator('F','collocation',ode,{'tf':1})
+    return [ca.integrator('F','collocation',ode,{'tf':1}), ode]
 
 def vars():
 
@@ -145,7 +145,7 @@ nx = x.shape[0]
 nu = u.shape[0]
 
 tuner = tunempc.Tuner(
-    f = dynamics(x, u, data),
+    f = dynamics(x, u, data)[0],
     l = objective(x,u,data),
     h = constraints(x,u, data),
     p = 1
@@ -157,10 +157,10 @@ wsol = tuner.solve_ocp(w0)
 Hc = tuner.convexify(rho = 1e-3, force = False, solver='mosek')
 
 # nmpc horizon length
-N = 200
+N = 20
 
 # gradient
-[H, q, _, _, _, _]  = tuner.pocp.get_sensitivities()
+S  = tuner.S
 
 # economic mpc controller
 ctrls = {}
@@ -168,20 +168,91 @@ sys  = tuner.sys
 ctrls['economic'] = tuner.create_mpc('economic',N = N)
 
 # normal tracking mpc controller
-tuningTn = {'H': [np.diag([10.0, 10.0, 0.1, 0.1])], 'q': q}
+tuningTn = {'H': [np.diag([10.0, 10.0, 0.1, 0.1])], 'q': S['q']}
 ctrls['tracking'] = tuner.create_mpc('tracking',N = N, tuning = tuningTn)
 
 # tuned tracking mpc controller
 ctrls['tuned'] = tuner.create_mpc('tuned',N = N)
 
-alpha = [0.1, 0.5, 1.0]
-log = clt.check_equivalence(ctrls, objective(x,u,data), sys['h'], wsol['x',0], ca.vertcat(0.0, 10.0), alpha)
+# check feedback policy equivalence
+alpha = np.linspace(0.0, 1.0, 10) # sweep factor
+dP2 = 1.0 # initial state perturbation
+log = clt.check_equivalence(ctrls, objective(x,u,data), sys['h'], wsol['x',0], ca.vertcat(0.0, dP2), alpha)
 
 # plot feedback controls to check equivalence
+ctrl_name = u.keys()
 for name in list(ctrls.keys()):
     for i in range(nu):
         plt.figure(i)
-        plt.plot(alpha, [log[j]['u'][name][0][i] for j in range(len(alpha))])
+        plt.plot([
+            a*dP2 for a in alpha],
+            [log[j]['u'][name][0][i] - log[j]['u']['economic'][0][i] \
+            for j in range(len(alpha))])
         plt.legend(list(ctrls.keys()))
+        plt.xlabel('dP2')
+        plt.ylabel('u0 - u0_economic: {}'.format(ctrl_name[i]))
+        plt.title('Feedback policy deviation')
+        plt.grid(True)
 
+# generate embedded solver
+ACADOS_CODEGENERATE = False
+if ACADOS_CODEGENERATE:
+
+    # get system ode
+    ode = ca.Function('ode',[x.cat,u.cat],[dynamics(x,u,data)[1]['ode']])
+
+    # solver options
+    opts = {}
+    opts['qp_solver'] = 'FULL_CONDENSING_HPIPM' # PARTIAL_CONDENSING_HPIPM
+    opts['hessian_approx'] = 'GAUSS_NEWTON'
+    opts['integrator_type'] = 'IRK'
+    opts['nlp_solver_type'] = 'SQP' # SQP_RTI
+    opts['qp_solver_cond_N'] = 1 # ???
+    opts['print_level'] = 0
+    opts['sim_method_num_steps'] = 20
+    opts['tf'] = N # h = tf/N = 1 [s]
+    # opts['nlp_solver_max_iter'] = 30
+    # opts['nlp_solver_step_length'] = 0.9
+
+    acados_ocp_solver, acados_integrator = ctrls['tuned'].generate(
+        ode, opts = opts, name = 'evaporation_process'
+        )
+
+    # recompute tuned feedback policy
+    ctrls_acados = {'tuned': ctrls['tuned']}
+    log_acados = clt.check_equivalence(
+        ctrls_acados,
+        objective(x,u,data),
+        sys['h'],
+        wsol['x',0],
+        ca.vertcat(0.0, dP2),
+        alpha,
+        flag = 'acados'
+        )
+
+    # plot feedback controls to check equivalence
+    plt.close('all')
+    legend_list = []
+    for name in list(ctrls.keys()):
+        legend_list += [name]
+        for i in range(nu):
+            plt.figure(i)
+            plt.plot(
+                [a*dP2 for a in alpha],
+                [log[j]['u'][name][0][i] - log[j]['u']['economic'][0][i] \
+                for j in range(len(alpha))]
+            )
+            if name == 'tuned':
+                plt.plot(
+                    [a*dP2 for a in alpha],
+                    [log_acados[j]['u'][name][0][i]  - log[j]['u']['economic'][0][i] \
+                        for j in range(len(alpha))],
+                    linestyle = '--')
+                if i == 0:
+                    legend_list += ['tuned_acados']
+            plt.legend(legend_list)
+            plt.xlabel('dP2')
+            plt.ylabel('u0 - u0_economic: {}'.format(ctrl_name[i]))
+            plt.title('Feedback policy deviation')
+            plt.grid(True)
 plt.show()

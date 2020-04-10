@@ -39,6 +39,7 @@ J. De Schutter, M. Zanon, M. Diehl
 import tunempc.pmpc as pmpc
 import tunempc.preprocessing as preprocessing
 import tunempc.mtools as mtools
+import tunempc.closed_loop_tools as clt
 import casadi as ca
 import casadi.tools as ct
 import numpy as np
@@ -146,7 +147,7 @@ ctrls['TUNEMPC'] = pmpc.Pmpc(
     options = opts
 )
 
-ACADOS_CODEGENERATE = True
+ACADOS_CODEGENERATE = False
 if ACADOS_CODEGENERATE:
 
     # get system dae
@@ -261,12 +262,22 @@ plt.show()
 # open loop simulation
 import copy
 log = []
+log_acados = []
 for alph in alpha:
     x_init = copy.deepcopy(x0)
     x_init[2] = x_init[2] + alph*dz
     x_init[0] = np.sqrt(-x_init[2]**2-x_init[1]**2+(l_t)**2)
     x_init[5] = -(x_init[0]*x_init[3] + x_init[1]*x_init[4]) / x_init[2]
     log.append(clt.check_equivalence(ctrls, user_input['l'], user_input['h'], x0, x_init-x0, [1.0])[-1])
+    if ACADOS_CODEGENERATE:
+        log_acados.append(clt.check_equivalence(
+            {'TUNEMPC_ACADOS':ctrls['TUNEMPC']},
+            user_input['l'],
+            user_input['h'],
+            x0,
+            x_init-x0,
+            [1.0],
+            flag = 'acados')[-1])
     for name in list(ctrls.keys()):
         ctrls[name].reset()
 
@@ -280,7 +291,7 @@ ctrls_colors = {
     'TMPC-1': 'red',
     'TMPC-2': 'orange'
 }
-ctrl_lstyle = {
+ctrls_lstyle = {
     'EMPC': 'solid',
     'TUNEMPC': 'dashed',
     'TMPC-1': 'dashdot',
@@ -293,14 +304,24 @@ ctrls_markers =  {
     'TMPC-2': 'x'
 }
 
+if ACADOS_CODEGENERATE:
+    ctrls_colors['TUNEMPC_ACADOS'] ='gray'
+    ctrls_lstyle['TUNEMPC_ACADOS'] = 'dashed'
+    ctrls_markers['TUNEMPC_ACADOS'] = 'o'
+
+ctrls_list = list(ctrls_colors.keys())
 # plot feedback equivalence
 plt.figure(1)
-for name in list(ctrls.keys()):
+for name in ctrls_list:
     if name != 'EMPC':
+        if name == 'TUNEMPC_ACADOS':
+            plot_log = log_acados
+        else:
+            plot_log = log
         feedback_norm = [
             np.linalg.norm(
                 np.divide(
-                    np.array(log[k]['u'][name][0]) - np.array(log[k]['u']['EMPC'][0]),
+                    np.array(plot_log[k]['u'][name][0]) - np.array(log[k]['u']['EMPC'][0]),
                     np.array(log[0]['u']['EMPC'][0]))
             ) for k in range(len(alpha))]
         plt.plot(
@@ -308,27 +329,31 @@ for name in list(ctrls.keys()):
             feedback_norm,
             marker = ctrls_markers[name],
             color = ctrls_colors[name],
-            linestyle = ctrl_lstyle[name],
+            linestyle = ctrls_lstyle[name],
             markersize=2,
             linewidth=lw
                 )
 plt.grid(True)
-plt.legend(list(ctrls.keys())[1:])
+plt.legend(ctrls_list[1:])
 plt.title(r'$\Delta \pi_0^{\star}(\hat{x}_0) \ [-]$')
 plt.xlabel(r'$\Delta z \ \mathrm{[m]}$')
 
 # plot stage cost deviation over time
 plt.figure(2)
-for name in list(ctrls.keys()):
-    stage_cost_dev = [x[0] - x[1] for x in zip(log[alpha_plot]['l'][name],lOpt)]
+for name in ctrls_list:
+    if name == 'TUNEMPC_ACADOS':
+        plot_log = log_acados
+    else:
+        plot_log = log
+    stage_cost_dev = [x[0] - x[1] for x in zip(plot_log[alpha_plot]['l'][name],lOpt)]
     plt.step(
         tgrid,
         stage_cost_dev,
         color = ctrls_colors[name],
-        linestyle = ctrl_lstyle[name],
+        linestyle = ctrls_lstyle[name],
         linewidth=lw,
         where='post')
-plt.legend(list(ctrls.keys()))
+plt.legend(ctrls_list)
 plt.grid(True)
 plt.xlabel('t - [s]')
 plt.title('Stage cost deviation')
@@ -343,12 +368,16 @@ for i in range(nx):
     if i == nx:
         plt.xlabel('t - [s]')
 
-    for name in list(ctrls.keys()):
+    for name in ctrls_list:
+        if name == 'TUNEMPC_ACADOS':
+            plot_log = log_acados
+        else:
+            plot_log = log
         plt.plot(
             tgridx,
-            [log[alpha_plot]['x'][name][j][i] - wsol['x',j][i] for j in range(Nmpc+1)],
+            [plot_log[alpha_plot]['x'][name][j][i] - sol['wsol']['x',j][i] for j in range(Nmpc+1)],
             color = ctrls_colors[name],
-            linestyle = ctrl_lstyle[name],
+            linestyle = ctrls_lstyle[name],
             linewidth=lw)
         plt.plot(tgridx, [0.0 for j in range(Nmpc+1)],  linestyle='--', color='black')
         plt.autoscale(enable=True, axis='x', tight=True)
@@ -357,22 +386,26 @@ for i in range(nx):
 # plot transient cost vs. alpha
 plt.figure(4)
 transient_cost = {}
-for name in list(ctrls.keys()):
+for name in ctrls_list:
+    if name == 'TUNEMPC_ACADOS':
+        plot_log = log_acados
+    else:
+        plot_log = log
     transient_cost[name] = []
     for i in range(len(alpha)):
             transient_cost[name].append(
-                sum([x[0] - x[1] for x in zip(log[i]['l'][name],lOpt)])
+                sum([x[0] - x[1] for x in zip(plot_log[i]['l'][name],lOpt)])
                 )
     plt.plot(
         alpha,
         transient_cost[name],
         marker = ctrls_markers[name],
         color = ctrls_colors[name],
-        linestyle = ctrl_lstyle[name],
+        linestyle = ctrls_lstyle[name],
         markersize = 2,
         linewidth=lw)
 plt.grid(True)
-plt.legend(list(ctrls))
+plt.legend(ctrls_list)
 plt.title('Transient cost')
 plt.xlabel(r'$\alpha \ \mathrm{[-]}$')
 

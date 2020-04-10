@@ -34,14 +34,7 @@ J. De Schutter, M. Zanon, M. Diehl
 
 """
 
-import matplotlib.pyplot as plt
 import tunempc
-import tunempc.pmpc as pmpc
-import tunempc.preprocessing as preprocessing
-import tunempc.closed_loop_tools as clt
-import numpy as np
-import casadi as ca
-import casadi.tools as ct
 import pickle
 
 # load user input

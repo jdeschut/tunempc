@@ -15,7 +15,7 @@
 #    Lesser General Public License for more details.
 #
 #    You should have received a copy of the GNU Lesser General Public
-#    License along with awebox; if not, write to the Free Software Foundation,
+#    License along with TuneMPC; if not, write to the Free Software Foundation,
 #    Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 #
 #
@@ -93,7 +93,10 @@ def dynamics(x, u, data):
     # create ode for integrator
     ode = {'x':x, 'p':u,'ode': xdot/3600}
 
-    return ca.integrator('F',data['integrator'],ode,{'tf':data['ts'],'number_of_finite_elements':data['num_steps']})
+    # integrator
+    F = ca.integrator('F',data['integrator'],ode,{'tf':data['ts'],'number_of_finite_elements':data['num_steps']})
+
+    return [F, ode]
 
 def vars():
 

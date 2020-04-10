@@ -15,7 +15,7 @@
 #    Lesser General Public License for more details.
 #
 #    You should have received a copy of the GNU Lesser General Public
-#    License along with awebox; if not, write to the Free Software Foundation,
+#    License along with TuneMPC; if not, write to the Free Software Foundation,
 #    Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 #
 #
@@ -63,8 +63,8 @@ def generate_kite_model_and_orbit(N):
     trial = awe.Trial(options, 'single_kite_drag_mode')
     trial.build()
     trial.optimize(final_homotopy_step='final')
-    trial.plot(['states','controls', 'constraints'])
-    plt.show()
+    # trial.plot(['states','controls', 'constraints'])
+    # plt.show()
 
     # extract model data
     sol = {}
@@ -135,6 +135,20 @@ cost = ca.Function(
 # initial guess
 w0 = awe_sol['w0']
 
+# save time-continuous dynamics
+xdot = ca.MX.sym('xdot', x.shape[0])
+xdot_awe = ct.vertcat(xdot, 0.0, 0.0, 0.0)# remove l, ldot, lddot
+z = ca.MX.sym('z', model['dae']['z']['xa'].shape[0])
+indeces = [*range(2,10)]+[*range(11,nx+3+z.shape[0])] # remove ldot, lddot, ldddot
+alg = model['dae']['alg'][indeces] 
+alg_fun = ca.Function('alg_fun',[model['dae']['x'],model['dae']['p'],model['dae']['z']],[alg])
+dyn = ca.Function(
+    'dae',
+    [xdot,x,u,z],
+    [alg_fun(x_awe, u_awe, ct.vertcat(xdot_awe, z))],
+    ['xdot','x','u','z'],
+    ['dyn'])
+
 # save user input info
 with open('user_input.pkl','wb') as f:
         pickle.dump({
@@ -142,5 +156,7 @@ with open('user_input.pkl','wb') as f:
             'l': cost,
             'h': sys['h'],
             'p': N,
-            'w0': w0
+            'w0': w0,
+            'dyn': dyn,
+            'ts': model['t_f']/N
         },f)

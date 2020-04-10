@@ -15,12 +15,12 @@
 #    Lesser General Public License for more details.
 #
 #    You should have received a copy of the GNU Lesser General Public
-#    License along with awebox; if not, write to the Free Software Foundation,
+#    License along with TuneMPC; if not, write to the Free Software Foundation,
 #    Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 #
 #
 """
-Periodic MPC routines
+MPC routines for periodic (standard/economic) reference tracking.
 
 :author: Jochem De Schutter
 """
@@ -74,6 +74,9 @@ class Pmpc(object):
         else:
             self.__gnl = None
 
+        # store system sensitivities around steady state
+        self.__S = sys['S']
+
         self.__cost = cost
 
         # set options
@@ -113,6 +116,7 @@ class Pmpc(object):
 
         # periodic indexing
         self.__index = 0
+        self.__index_acados = 0
 
         # create periodic reference
         assert wref   != None, 'Provide reference trajectory!'
@@ -120,6 +124,10 @@ class Pmpc(object):
 
         # initialize log
         self.__initialize_log()
+
+        # initialize acados solvers
+        self.__acados_ocp_solver = None
+        self.__acados_integrator = None
 
         # solver initial guess
         self.__set_initial_guess()
@@ -133,7 +141,7 @@ class Pmpc(object):
             'hessian_approximation': 'exact',
             'ipopt_presolve': False,
             'max_iter': 2000,
-            'p_operator': None,
+            'p_operator': ca.Function('p_operator',[self.__vars['x']],[self.__vars['x']]),
             'slack_flag': 'none'
         }
 
@@ -226,10 +234,7 @@ class Pmpc(object):
             constraints_entry += (ct.entry('h', shape = self.__h.size1_out(0), repeat = self.__N),)
 
         # terminal constraint
-        if self.__p_operator is not None:
-            nx_term = self.__p_operator.size1_out(0)
-        else:
-            nx_term = self.__nx
+        nx_term = self.__p_operator.size1_out(0)
 
         # create general constraints structure
         g_struct = ct.struct_symMX([
@@ -261,10 +266,7 @@ class Pmpc(object):
 
         repeated_constr = list(itertools.chain.from_iterable(zip(*constr.values())))
 
-        if self.__p_operator is not None:
-            term_constraint = self.__p_operator(w['x',-1] - xN)
-        else:
-            term_constraint = w['x',-1] - xN
+        term_constraint = self.__p_operator(w['x',-1] - xN)
 
         self.__g = g_struct(ca.vertcat(
             w['x',0] - x0,
@@ -406,64 +408,266 @@ class Pmpc(object):
 
         return self.__w_sol['u',0]
 
+    def step_acados(self, x0):
+
+        # reset periodic indexing if necessary
+        self.__index_acados = self.__index_acados%self.__Nref
+
+        # format x0
+        x0 = np.squeeze(x0.full())
+
+        # update NLP parameters
+        self.__acados_ocp_solver.set(0, "lbx", x0)
+        self.__acados_ocp_solver.set(0, "ubx", x0)
+
+        # update reference and tuning matrices
+        self.__set_acados_reference()
+
+        # solve
+        status = self.__acados_ocp_solver.solve()
+        # if status != 0:
+        #     raise Exception('acados solver returned status {}. Exiting.'.format(status))
+
+        # save solution
+        self.__w_sol_acados = self.__w(0.0)
+        for i in range(self.__N):
+            self.__w_sol_acados['x',i] = self.__acados_ocp_solver.get(i,"x")
+            self.__w_sol_acados['u',i] = self.__acados_ocp_solver.get(i,"u")[:self.__nu]
+            if 'us' in self.__vars:
+                self.__w_sol_acados['us',i] = self.__acados_ocp_solver.get(i,"u")[self.__nu:]
+        self.__w_sol_acados['x',self.__N] = self.__acados_ocp_solver.get(self.__N,"x")
+
+        # feedback policy
+        u0 = self.__acados_ocp_solver.get(0, "u")[:self.__nu]
+
+        # update initial guess
+        self.__shift_initial_guess_acados()
+
+        # shift index
+        self.__index_acados += 1
+
+        return u0
+
+    def generate(self, dae, name = 'tunempc', opts = {}):
+
+        """ Create embeddable NLP solver
+        """
+
+        from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver, AcadosSimSolver
+
+        # extract dimensions
+        nx = self.__nx
+        nu = self.__nu + self.__ns# treat slacks as pseudo-controls 
+
+        # extract reference
+        ref = self.__ref
+        xref = np.squeeze(self.__ref[0][:nx], axis = 1)
+        uref = np.squeeze(self.__ref[0][nx: nx + nu], axis = 1)
+
+        # create acados model
+        model = AcadosModel()
+        model.x = ca.MX.sym('x',nx)
+        model.u = ca.MX.sym('u',nu)
+        model.p = []
+        model.name = name
+
+        # detect input type
+        n_in = dae.n_in()
+        if n_in == 2:
+
+            # xdot = f(x, u)
+            if 'integrator_type' in opts:
+                if opts['integrator_type'] == 'IRK':
+                    xdot = ca.MX.sym('xdot', nx)
+                    model.xdot = xdot
+                    model.f_impl_expr = xdot - dae(model.x, model.u[:self.__nu])
+                    model.f_expl_expr = xdot
+                elif opts['integrator_type'] == 'ERK':
+                    model.f_expl_expr = dae(model.x, model.u[:self.__nu])
+            else:
+                raise ValueError('Provide numerical integrator type!')
+
+        else:
+
+            xdot = ca.MX.sym('xdot', nx)
+            model.xdot = xdot
+            model.f_expl_expr = xdot
+
+            if n_in == 3:
+
+                # f(xdot, x, u) = 0
+                model.f_impl_expr = dae(xdot, model.x, model.u[:self.__nu])
+
+            elif n_in == 4:
+
+                # f(xdot, x, u, z) = 0 
+                nz = dae.size1_in(3)
+                z = ca.MX.sym('z', nz)
+                model.z = z
+                model.f_impl_expr = dae(xdot, model.x, model.u[:self.__nu], z)
+            else:
+                raise ValueError('Invalid number of inputs for system dynamics function.')
+
+        if self.__gnl is not None:
+            model.con_h_expr = self.__gnl(model.x, model.u[:self.__nu], model.u[self.__nu:])
+
+        if self.__type == 'economic':
+            model.cost_expr_ext_cost = self.__cost(model.x, model.u[:self.__nu])
+
+        # create acados ocp
+        ocp = AcadosOcp()
+        ocp.model = model
+        ny = nx + nu
+        ny_e = nx
+
+        # set horizon length
+        ocp.dims.N = self.__N
+
+        # set cost module
+        if self.__type == 'economic':
+
+            # set cost function type to external (provided in model)
+            ocp.cost.cost_type = 'EXTERNAL'
+        else:
+
+            # set weighting matrices
+            if self.__type == 'tracking':
+                ocp.cost.W = self.__Href[0][0]
+
+            # set-up linear least squares cost
+            ocp.cost.cost_type = 'LINEAR_LS'
+            ocp.cost.W_e = np.zeros((nx, nx))
+            ocp.cost.Vx = np.zeros((ny, nx))
+            ocp.cost.Vx[:nx,:nx] = np.eye(nx)
+            Vu = np.zeros((ny, nu))
+            Vu[nx:,:] = np.eye(nu)
+            ocp.cost.Vu = Vu
+            ocp.cost.Vx_e = np.eye(nx)
+            ocp.cost.yref  = np.squeeze(
+                ca.vertcat(xref,uref).full() - \
+                ct.mtimes(np.linalg.inv(ocp.cost.W),self.__qref[0][0].T).full(), # gradient term
+                axis = 1
+                )
+            ocp.cost.yref_e = np.zeros((ny_e, ))
+            if n_in == 4: # DAE flag
+                ocp.cost.Vz = np.zeros((ny,nz))
+
+        # initial condition
+        ocp.constraints.x0 = xref
+
+        # set inequality constraints
+        ocp.constraints.constr_type = 'BGH'
+        if self.__S['C'] is not None:
+            C = self.__S['C'][0][:,:nx]
+            D = self.__S['C'][0][:,nx:]
+            lg = -self.__S['e'][0] + ct.mtimes(C,xref).full() + ct.mtimes(D,uref).full()
+            ug = 1e8 - self.__S['e'][0] + ct.mtimes(C,xref).full() + ct.mtimes(D,uref).full()
+            ocp.constraints.lg = np.squeeze(lg, axis = 1)
+            ocp.constraints.ug = np.squeeze(ug, axis = 1)
+            ocp.constraints.C  = C
+            ocp.constraints.D  = D
+            
+            if 'usc' in self.__vars:
+                if 'us' in self.__vars:
+                    arg = [self.__vars['x'],self.__vars['u'], self.__vars['us'],self.__vars['usc']]
+                else:
+                    arg = [self.__vars['x'],self.__vars['u'],self.__vars['usc']]
+                Jsg = ca.Function(
+                    'Jsg',
+                    [self.__vars['usc']],
+                    [ca.jacobian(
+                        self.__h(*arg),
+                        self.__vars['usc']
+                    )]
+                )(0.0)
+                self.__Jsg = Jsg.full()[:-self.__nsc,:]
+                ocp.constraints.Jsg = self.__Jsg
+                ocp.cost.Zl = np.zeros((self.__nsc,))
+                ocp.cost.Zu = np.zeros((self.__nsc,))
+                ocp.cost.zl = np.squeeze(self.__scost.full(), axis = 1)
+                ocp.cost.zu = np.squeeze(self.__scost.full(), axis = 1)
+
+        # set nonlinear equality constraints
+        if self.__gnl is not None:
+            ocp.constraints.lh = np.zeros(self.__ns,)
+            ocp.constraints.uh = np.zeros(self.__ns,)
+
+        # terminal constraint:
+        x_term = self.__p_operator(model.x)
+        Jbx = ca.Function('Jbx',[model.x], [ca.jacobian(x_term, model.x)])(0.0)
+        ocp.constraints.Jbx_e = Jbx.full()
+        ocp.constraints.lbx_e = np.squeeze(self.__p_operator(xref).full(), axis = 1)
+        ocp.constraints.ubx_e = np.squeeze(self.__p_operator(xref).full(), axis = 1)
+
+        for option in list(opts.keys()):
+            setattr(ocp.solver_options, option, opts[option])
+
+        self.__acados_ocp_solver = AcadosOcpSolver(ocp, json_file = 'acados_ocp_' + model.name + '.json')
+        self.__acados_integrator = AcadosSimSolver(ocp, json_file = 'acados_ocp_' + model.name + '.json')
+
+        # set initial guess
+        self.__set_acados_initial_guess()
+
+        return self.__acados_ocp_solver, self.__acados_integrator
+
     def __create_reference(self, wref, tuning, lam_g_ref):
 
         """ Create periodic reference and tuning data.
         """
 
         # period of reference
-        Nref = len(wref['u'])
+        self.__Nref = len(wref['u'])
 
         # create reference and tuning sequence
         # for each starting point in period
         ref_pr = []
         ref_du = []
+        ref_du_struct = []
         H   = []
         q   = []
 
-        for k in range(Nref):
+        for k in range(self.__Nref):
             
             # reference primal solution
             refk = []
             for j in range(self.__N):
 
                 refk += [
-                    wref['x', (k+j)%Nref],
-                    wref['u', (k+j)%Nref]
+                    wref['x', (k+j)%self.__Nref],
+                    wref['u', (k+j)%self.__Nref]
                 ]
 
                 if 'us' in self.__vars:
-                    refk += [wref['us', (k+j)%Nref]]
+                    refk += [wref['us', (k+j)%self.__Nref]]
             
-            refk.append(wref['x', (k+self.__N)%Nref])
+            refk.append(wref['x', (k+self.__N)%self.__Nref])
 
             # reference dual solution
             lamgk = self.__g(0.0)
-            lamgk['init'] = -lam_g_ref['dyn',(k-1)%Nref]
+            lamgk['init'] = -lam_g_ref['dyn',(k-1)%self.__Nref]
             for j in range(self.__N):
-                lamgk['dyn',j] = lam_g_ref['dyn',(k+j)%Nref]
+                lamgk['dyn',j] = lam_g_ref['dyn',(k+j)%self.__Nref]
                 if 'g' in list(lamgk.keys()):
-                    lamgk['g',j] = lam_g_ref['g', (k+j)%Nref]
+                    lamgk['g',j] = lam_g_ref['g', (k+j)%self.__Nref]
                 if 'h' in list(lamgk.keys()):
-                    lam_h = [lam_g_ref['h', (k+j)%Nref]]
+                    lam_h = [lam_g_ref['h', (k+j)%self.__Nref]]
                     if 'usc' in self.__vars:
                         lam_h += [-self.__scost] # TODO not entirely correct
 
                     lamgk['h',j] = ct.vertcat(*lam_h)
-            if self.__p_operator is not None:
-                lamgk['term'] = self.__p_operator(lam_g_ref['dyn',(k+self.__N-1)%Nref])
-            else:
-                lamgk['term'] = lam_g_ref['dyn',(k+self.__N-1)%Nref]
+            lamgk['term'] = self.__p_operator(lam_g_ref['dyn',(k+self.__N-1)%self.__Nref])
 
             ref_pr.append(ct.vertcat(*refk))
             ref_du.append(lamgk.cat)
+            ref_du_struct.append(lamgk)
 
             if tuning is not None:
-                H.append([tuning['H'][(k+j)%Nref] for j in range(self.__N)])
-                q.append([tuning['q'][(k+j)%Nref] for j in range(self.__N)])
+                H.append([tuning['H'][(k+j)%self.__Nref] for j in range(self.__N)])
+                q.append([tuning['q'][(k+j)%self.__Nref] for j in range(self.__N)])
 
         self.__ref    = ref_pr
         self.__ref_du = ref_du
+        self.__ref_du_struct = ref_du_struct
         self.__Href = H
         self.__qref = q
 
@@ -527,6 +731,7 @@ class Pmpc(object):
     def reset(self):
 
         self.__index = 0
+        self.__index_acados = 0
         self.__initialize_log()
         self.__set_initial_guess()
 
@@ -573,6 +778,28 @@ class Pmpc(object):
 
         return w_shifted, lam_g_shifted
 
+    def __shift_initial_guess_acados(self):
+
+        for i in range(self.__N):
+            x_prev = np.squeeze(self.__w_sol_acados['x',i+1].full(), axis = 1)
+            self.__acados_ocp_solver.set(i, "x", x_prev)
+            if i < self.__N-1:
+                u_prev = np.squeeze(self.__w_sol_acados['u',i+1].full(), axis = 1)
+                if 'us' in self.__vars:
+                    u_prev = np.squeeze(ct.vertcat(u_prev, self.__w_sol_acados['us',i+1]).full(), axis = 1)
+                self.__acados_ocp_solver.set(i, "u", u_prev)
+
+        # initial guess in terminal stage on periodic trajectory
+        idx = (self.__index_acados+self.__N)%self.__Nref
+
+        # reference
+        xref = np.squeeze(self.__ref[(idx+1)%self.__Nref][:self.__nx], axis = 1)
+        uref = np.squeeze(self.__ref[idx][self.__nx: self.__nx + self.__nu + self.__ns], axis = 1)
+        self.__acados_ocp_solver.set(self.__N, "x", xref)
+        self.__acados_ocp_solver.set(self.__N-1, "u", uref)
+
+        return None
+
     def __set_initial_guess(self):
 
         # create initial guess at steady state
@@ -586,6 +813,112 @@ class Pmpc(object):
 
         # initial guess for multipliers
         self.__lam_g0 = self.__g(self.__ref_du[self.__index])
+
+        # acados solver initialization at reference
+        if self.__acados_ocp_solver is not None:
+            self.__set_acados_initial_guess()
+
+        return None
+
+    def __set_acados_reference(self):
+
+        for i in range(self.__N):
+
+            # periodic index
+            idx = (self.__index_acados+i)%self.__Nref
+
+            # reference
+            xref = np.squeeze(self.__ref[idx][:self.__nx], axis = 1)
+            uref = np.squeeze(self.__ref[idx][self.__nx: self.__nx + self.__nu + self.__ns], axis = 1)
+
+            # construct output reference with gradient term
+            yref = np.squeeze(
+                ca.vertcat(xref,uref).full() - \
+                ct.mtimes(
+                    np.linalg.inv(self.__Href[idx][0]), # inverse of weighting matrix
+                    self.__qref[idx][0].T).full(), # gradient term
+                axis = 1
+                )
+            self.__acados_ocp_solver.set(i, 'yref', yref)
+
+            # update tuning matrix
+            self.__acados_ocp_solver.cost_set(i, 'W', self.__Href[idx][0])
+
+            # update constraint bounds
+            C = self.__S['C'][idx][:,:self.__nx]
+            D = self.__S['C'][idx][:,self.__nx:]
+            lg = -self.__S['e'][idx] + ct.mtimes(C,xref).full() + ct.mtimes(D,uref).full()
+            ug = 1e8 - self.__S['e'][idx] + ct.mtimes(C,xref).full() + ct.mtimes(D,uref).full()
+            self.__acados_ocp_solver.constraints_set(i, 'lg', np.squeeze(lg, axis = 1))
+            self.__acados_ocp_solver.constraints_set(i, 'ug', np.squeeze(ug, axis = 1))
+
+        # update terminal constraint
+        idx = (self.__index_acados+self.__N)%self.__Nref
+        x_term = np.squeeze(self.__p_operator(self.__ref[idx][:self.__nx]), axis = 1)
+        self.__acados_ocp_solver.set(self.__N, 'lbx', x_term)
+        self.__acados_ocp_solver.set(self.__N, 'ubx', x_term)
+
+        return None
+
+    def __set_acados_initial_guess(self):
+
+        for i in range(self.__N):
+
+            # periodic index
+            idx = (self.__index_acados+i)%self.__Nref
+
+            # initialize at reference
+            xref = np.squeeze(self.__ref[idx][:self.__nx], axis = 1)
+            uref = np.squeeze(self.__ref[idx][self.__nx: self.__nx + self.__nu + self.__ns], axis = 1)
+
+            # set initial guess
+            self.__acados_ocp_solver.set(i, "x", xref)
+            self.__acados_ocp_solver.set(i, "u", uref)
+
+            # set dual initial guess
+            ref_dual = self.__ref_du_struct[idx]
+            self.__acados_ocp_solver.set(i, "pi", np.squeeze(ref_dual['dyn',i].full()))
+
+            # the inequalities are internally organized in the following order:
+            # [ lbu lbx lg lh ubu ubx ug uh ]
+            lam_h = []
+            t = []
+            if i == 0:
+                lam_h.append(ref_dual['init'])  # lbx_0
+                t.append(np.zeros((self.__nx,)))
+            if 'h' in list(ref_dual.keys()):
+                lam_lh = -ref_dual['h',0][:ref_dual['h',0].shape[0]-self.__nsc]
+                lam_h.append(lam_lh) # lg
+                t.append(self.__S['e'][idx%self.__Nref])
+            if 'g' in list(ref_dual.keys()):
+                lam_h.append(ref_dual['g',0]) # lh
+                t.append(np.zeros((ref_dual['g',0].shape[0],)))
+            if i == 0:
+                lam_h.append(np.zeros((self.__nx,))) # ubx_0
+                t.append(np.zeros((self.__nx,)))
+            if 'h' in list(ref_dual.keys()):
+                lam_h.append(np.zeros((ref_dual['h',0].shape[0]- self.__nsc,))) # ug
+                t.append(1e8*np.ones((ref_dual['h',0].shape[0]- self.__nsc,1))-self.__S['e'][idx])
+            if 'g' in list(ref_dual.keys()):
+                lam_h.append(np.zeros((ref_dual['g',0].shape[0],))) # uh
+                t.append(np.zeros((ref_dual['g',0].shape[0],)))
+            if self.__nsc > 0:
+                lam_sl = self.__scost - ct.mtimes(lam_lh.T,self.__Jsg).T
+                lam_h.append(lam_sl) # ls
+                lam_h.append(self.__scost) # us
+                t.append(np.zeros((self.__nsc,))) # slg > 0
+                t.append(np.zeros((self.__nsc,))) # sug > 0
+            self.__acados_ocp_solver.set(i, "lam", np.squeeze(ct.vertcat(*lam_h).full()))
+            self.__acados_ocp_solver.set(i, "t", np.squeeze(ct.vertcat(*t).full()))
+
+        # terminal state
+        idx = (self.__index_acados+self.__N)%self.__Nref
+        xref = np.squeeze(self.__ref[idx][:self.__nx], axis = 1)
+        self.__acados_ocp_solver.set(self.__N, "x", xref)
+
+        # terminal multipliers
+        lam_term = np.squeeze(ct.vertcat(ref_dual['term'],np.zeros((ref_dual['term'].shape[0],))).full())
+        self.__acados_ocp_solver.set(self.__N, "lam", lam_term)
 
         return None
 
@@ -608,3 +941,15 @@ class Pmpc(object):
     @property
     def index(self):
         return self.__index
+
+    @property
+    def acados_ocp_solver(self):
+        return self.__acados_ocp_solver
+
+    @property
+    def acados_integrator(self):
+        return self.__acados_integrator
+
+    @property
+    def w_sol_acados(self):
+        return self.__w_sol_acados

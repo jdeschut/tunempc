@@ -15,7 +15,7 @@
 #    Lesser General Public License for more details.
 #
 #    You should have received a copy of the GNU Lesser General Public
-#    License along with awebox; if not, write to the Free Software Foundation,
+#    License along with TuneMPC; if not, write to the Free Software Foundation,
 #    Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 #
 #
@@ -29,8 +29,10 @@ import tunempc.preprocessing as preprocessing
 import tunempc.pocp as pocp
 import tunempc.convexifier as convexifier
 import tunempc.pmpc as pmpc
+import tunempc.mtools as mtools
 import casadi as ca
 import casadi.tools as ct
+import numpy as np
 import copy
 from tunempc.logger import Logger
 
@@ -117,6 +119,8 @@ class Tuner(object):
         Logger.logger.info('')
 
         self.__w_sol = self.__ocp.solve(w0=w_init)
+        self.__S     = self.__ocp.get_sensitivities()
+        self.__sys['S'] = self.__S
 
         Logger.logger.info('')
         Logger.logger.info('Optimization problem solved.')
@@ -132,12 +136,12 @@ class Tuner(object):
 
 
         # extract POCP sensitivities at optimal solution
-        [H, q, A, B, C, G] = self.__ocp.get_sensitivities()
+        S = self.__S
 
         # extract Q, R, N
-        Q = [H[i][:self.__nx,:self.__nx] for i in range(self.__p)]
-        R = [H[i][self.__nx:,self.__nx:] for i in range(self.__p)]
-        N = [H[i][:self.__nx, self.__nx:] for i in range(self.__p)]
+        Q = [S['H'][i][:self.__nx,:self.__nx] for i in range(self.__p)]
+        R = [S['H'][i][self.__nx:,self.__nx:] for i in range(self.__p)]
+        N = [S['H'][i][:self.__nx, self.__nx:] for i in range(self.__p)]
 
         # convexifier options
         opts = {'rho': rho, 'solver': solver, 'force': force}
@@ -147,12 +151,10 @@ class Tuner(object):
         Logger.logger.info(60*'=')
         Logger.logger.info('')
 
-        dHc, _, _, _ = convexifier.convexify(A, B, Q, R, N, C = C, G = G, opts=opts)
-        Hc = [H[i] + dHc[i] for i in range(self.__p)] # build tuned MPC hessian
+        dHc, _, _, _ = convexifier.convexify(S['A'], S['B'], Q, R, N, C = S['C_As'], G = S['G'], opts=opts)
+        S['Hc'] = [(S['H'][i] + dHc[i]).full() for i in range(self.__p)] # build tuned MPC hessian
 
-        self.__S = {'H': H,'q': q,'A': A,'B': B,'C': C,'G': G,'Hc': Hc}
-
-        return Hc
+        return S['Hc']
 
     def create_mpc(self, mpc_type, N, opts = {}, tuning = None):
 
@@ -176,7 +178,7 @@ class Tuner(object):
         if mpc_type == 'economic':
             mpc = pmpc.Pmpc(N = N, sys = mpc_sys, cost = self.__l, wref = self.__w_sol, lam_g_ref=self.__ocp.lam_g, options=opts)
         else:
-            cost = self.__tracking_cost(self.__nx+self.__nu+self.__nus)
+            cost = mtools.tracking_cost(self.__nx+self.__nu+self.__nus)
             lam_g0 = copy.deepcopy(self.__ocp.lam_g)
             lam_g0['dyn'] = 0.0
             if 'g' in lam_g0.keys():
@@ -190,23 +192,6 @@ class Tuner(object):
             mpc = pmpc.Pmpc(N = N, sys = mpc_sys, cost = cost, wref = self.__w_sol, tuning = tuning, lam_g_ref=lam_g0, options=opts)
         
         return mpc
-
-    def __tracking_cost(self, nw):
-
-        """ Create tracking cost function
-        """
-
-        # reference parameters
-        w =  ca.MX.sym('w', (nw, 1))
-        wref = ca.MX.sym('wref', (nw, 1))
-        H = ca.MX.sym('H', (nw, nw))
-        q = ca.MX.sym('H', (nw, 1))
-
-        # cost definition
-        dw   = w - wref
-        obj = 0.5*ct.mtimes(dw.T, ct.mtimes(H, dw)) + ct.mtimes(q.T,dw)
-
-        return ca.Function('tracking_cost',[w, wref, H, q],[obj])
 
     def __log_license_info(self):
 
@@ -268,3 +253,8 @@ class Tuner(object):
     def l(self):
         "Economic cost function"
         return self.__l
+
+    @property
+    def S(self):
+        "Sensitivity information"
+        return self.__S

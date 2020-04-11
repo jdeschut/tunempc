@@ -39,7 +39,7 @@ def test_input_formatting_no_constraints():
 
     # case of no constraints
     sys = {}
-    sys['F'] = ca.Function('F',[x,u],[x])
+    sys['f'] = ca.Function('f',[x,u],[x])
     sys = preprocessing.input_formatting(sys)
 
     assert 'h' not in sys, 'non-existent lin. inequalites are being created'
@@ -58,7 +58,7 @@ def test_input_formatting_lin_constraints():
 
     # case of linear constraints
     sys = {}
-    sys['F'] = ca.Function('F',[x,u],[x])
+    sys['f'] = ca.Function('f',[x,u],[x])
     h = ca.Function('h',[x,u],[ca.vertcat(x+u[0], u[1])])
     sys['h'] = h
     sys = preprocessing.input_formatting(sys)
@@ -81,7 +81,7 @@ def test_input_formatting_mixed_constraints():
 
     # case of mixed constraints
     sys = {}
-    sys['F'] = ca.Function('F',[x,u],[x])
+    sys['f'] = ca.Function('f',[x,u],[x])
     h = ca.Function('h',[x,u],[ca.vertcat(x+u[0], u[1], x**2*u[0])])
     sys['h'] = h
     sys = preprocessing.input_formatting(sys)
@@ -113,7 +113,7 @@ def test_add_mpc_slacks_no_constraints():
 
     # case of no constraints
     sys = {}
-    sys['F'] = ca.Function('F',[x,u],[x])
+    sys['f'] = ca.Function('f',[x,u],[x])
     sys['vars'] = collections.OrderedDict()
     sys['vars']['x'] = x
     sys['vars']['u'] = u
@@ -132,7 +132,7 @@ def test_add_mpc_slacks_no_active_constraints():
 
     # case of no active constraints
     sys = {}
-    sys['F'] = ca.Function('F',[x,u],[x])
+    sys['f'] = ca.Function('f',[x,u],[x])
     h = ca.Function('h',[x,u],[ca.vertcat(x+u[0], u[1])])
     sys['h'] = h
     sys['vars'] = collections.OrderedDict()
@@ -154,7 +154,7 @@ def test_add_mpc_slacks_active_constraints():
 
     # case of no active constraints
     sys = {}
-    sys['F'] = ca.Function('F',[x,u],[x])
+    sys['f'] = ca.Function('f',[x,u],[x])
     h = ca.Function('h',[x,u],[ca.vertcat(x+u[0], u[1])])
     sys['h'] = h
     sys['vars'] = collections.OrderedDict()
@@ -178,6 +178,7 @@ def test_add_mpc_slacks_active_constraints():
     u_num = ca.vertcat(0.0, 2.0)
     usc_num = ca.vertcat(3.0)
     h_eval = sys['h'](x_num, u_num, usc_num).full()
-    scost_eval = sys['scost'](usc_num).full()
+    scost_eval = sys['scost'].full()
+    print(scost_eval)
     assert ca.vertsplit(h_eval) == [4.0, 2.0, 3.0]
-    assert ca.vertsplit(scost_eval) == [150.0]
+    assert scost_eval[0][0] == 5000.

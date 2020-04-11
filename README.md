@@ -1,5 +1,6 @@
 # TuneMPC
 
+![Build](https://github.com/jdeschut/tunempc/workflows/Build/badge.svg)
 [![License: LGPL v3](https://img.shields.io/badge/License-LGPL%20v3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)
 
 **TuneMPC** is a Python package for economic tuning of nonlinear model predictive control (NMPC) problems.

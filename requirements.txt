@@ -1,0 +1,5 @@
+numpy
+scipy
+casadi==3.5.1
+matplotlib
+picos==1.2.0.post32

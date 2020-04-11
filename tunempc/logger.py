@@ -44,6 +44,7 @@ class Logger():
         if os.path.exists(config_file):
             logging.config.fileConfig(config_file)
         else:
+            assert os.path.exists(default_config_file), 'path {} does not exist'.format(default_config_file)
             logging.config.fileConfig(default_config_file)
         logger = logging.getLogger('tunempc')
         self.logger = logger

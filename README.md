@@ -55,7 +55,7 @@ w_opt  = tuner.solve_ocp() # compute optimal p-periodic trajectory
      pip3 install <path_to_installation_folder>/tunempc
      ```
 
-The following steps are optional but increase performance and robustness or enable additional features.
+The following steps are optional but increase performance and reliability or enable additional features.
 
 3. (optional) Install MOSEK SDP solver (free [academic licenses](https://www.mosek.com/products/academic-licenses/) available)
 

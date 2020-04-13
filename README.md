@@ -8,37 +8,6 @@
 More precisely, it implements a formal procedure that tunes a tracking (N)MPC scheme so that it is locally first-order equivalent to economic NMPC.
 For user-provided system dynamics, constraints and economic objective, **TuneMPC** enables automated computation of optimal steady states and periodic trajectories, and spits out corresponding tuned stage cost matrices.
 
-## Using TuneMPC
-
-The interface of **TuneMPC** is based on the symbolic modeling framework [CasADi](https://web.casadi.org/).  
-Input functions should be given as CasADi `Function` objects.
-
-User-defined inputs:
-
-```python
-import casadi as ca
-
-x = ca.MX.sym('x',<insert state dimension>) # states
-u = ca.MX.sym('u',<insert control dimension>) # controls
-
-f = ca.Function('f',[x,u],[<insert dynamics expr>],['x','u'],['xf']) # discrete system dynamics
-l = ca.Function('l',[x,u],[<insert cost expr>]) # economic stage cost
-h = ca.Function('h',[x,u],[<insert constraints expr>]) # constraints >= 0
-
-p = <insert period of interest> # choose p=1 for steady-state
-```
-
-
-Basic application of **TuneMPC** with a few lines of code:
-
-```python
-import tunempc
-
-tuner  = tunempc.Tuner(f, l, h, p) # construct optimal control problem
-w_opt  = tuner.solve_ocp() # compute optimal p-periodic trajectory
-[H, q] = tuner.convexify() # compute economically tuned stage cost matrices
-```
-
 ## Installation
 
 **TuneMPC** requires Python 3.5/3.6/3.7.
@@ -80,6 +49,51 @@ The following steps are optional but increase performance and reliability or ena
 5.  (optional) It is recommended to use HSL linear solvers as a plugin with IPOPT.
  In order to get the HSL solvers and render them visible to CasADi, follow these [instructions](https://github.com/casadi/casadi/wiki/Obtaining-HSL).
 
+## Using TuneMPC
+
+The interface of **TuneMPC** is based on the symbolic modeling framework [CasADi](https://web.casadi.org/).  
+Input functions should be given as CasADi `Function` objects.
+
+User-defined inputs:
+
+```python
+import casadi as ca
+
+x = ca.MX.sym('x',<insert state dimension>) # states
+u = ca.MX.sym('u',<insert control dimension>) # controls
+
+f = ca.Function('f',[x,u],[<insert dynamics expr>],['x','u'],['xf']) # discrete system dynamics
+l = ca.Function('l',[x,u],[<insert cost expr>]) # economic stage cost
+h = ca.Function('h',[x,u],[<insert constraints expr>]) # constraints >= 0
+
+p = <insert period of interest> # choose p=1 for steady-state
+```
+
+Basic application of **TuneMPC** with a few lines of code:
+
+```python
+import tunempc
+
+tuner  = tunempc.Tuner(f, l, h, p) # construct optimal control problem
+w_opt  = tuner.solve_ocp() # compute optimal p-periodic trajectory
+[H, q] = tuner.convexify() # compute economically tuned stage cost matrices
+```
+
+Create a tracking MPC controller (terminal point constraint) based on the tuned stage cost matrices:
+
+```python
+ctrl = tuner.create_mpc('tuned', N = <insert MPC horizon>)
+u0 = ctrl.step(x0)  # compute feedback law
+```
+
+(optional) Code-generate a fast and embeddable solver for this MPC controller using `acados` (see [installation instructions](#installation)):
+```python
+ode = <insert ode expr based on x,u> # ode or dae expression
+acados_ocp_solver, _ = ctrl.generate(ode) # generate solver
+u0 = ctrl.step_acados(x0) # solver can be called through python interface
+```
+
+For a more complete overview of the available functionality, have a look at the different application [examples](https://github.com/jdeschut/tunempc/examples).
 ## Acknowledgments
 
 This project has received funding by DFG via Research Unit FOR 2401 and by an industrial project with the company [Kiteswarms Ltd](http://www.kiteswarms.com).

@@ -41,7 +41,7 @@ w_opt  = tuner.solve_ocp() # compute optimal p-periodic trajectory
 
 ## Installation
 
-**TuneMPC** requires Python 3.5 or later.
+**TuneMPC** requires Python 3.5/3.6/3.7.
 
 1.  Get a local copy of `tunempc`:
 
@@ -52,8 +52,10 @@ w_opt  = tuner.solve_ocp() # compute optimal p-periodic trajectory
 2.   Install the package with dependencies:
 
      ```
-     pip3 install <path_to_root_folder>/tunempc
+     pip3 install <path_to_installation_folder>/tunempc
      ```
+
+The following steps are optional but increase performance and robustness or enable additional features.
 
 3. (optional) Install MOSEK SDP solver (free [academic licenses](https://www.mosek.com/products/academic-licenses/) available)
 
@@ -61,7 +63,19 @@ w_opt  = tuner.solve_ocp() # compute optimal p-periodic trajectory
      pip3 install -f https://download.mosek.com/stable/wheel/index.html Mosek==9.0.98
      ```
 
-4.  (optional) Install the [acados](https://github.com/acados/acados/) software package for generating fast and embedded TuneMPC solvers. Follow these [instructions](https://github.com/acados/acados/blob/master/interfaces/acados_template/README.md) to install the Python interface.
+4.  (optional) Install the `acados` software package for generating fast and embedded TuneMPC solvers.
+
+     ```
+     git submodule update --init --recursive
+     cd external/acados
+     mkdir build && cd build
+     cmake -DACADOS_WITH_QPOASES=ON ..
+     make install -j4 && cd ..
+     pip3 install interfaces/acados_template
+     export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:"<tunempc_root>/external/acados/lib"
+     ```
+
+     More detailed instruction can be found [here](https://github.com/jdeschut/acados/blob/master/interfaces/acados_template/README.md).
 
 5.  (optional) It is recommended to use HSL linear solvers as a plugin with IPOPT.
  In order to get the HSL solvers and render them visible to CasADi, follow these [instructions](https://github.com/casadi/casadi/wiki/Obtaining-HSL).

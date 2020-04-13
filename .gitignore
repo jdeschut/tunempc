@@ -1,4 +1,6 @@
 .eggs/
+dist/
+tunempc.egg-info/
 
 # python
 *.pyc

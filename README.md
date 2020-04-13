@@ -8,6 +8,47 @@
 More precisely, it implements a formal procedure that tunes a tracking (N)MPC scheme so that it is locally first-order equivalent to economic NMPC.
 For user-provided system dynamics, constraints and economic objective, **TuneMPC** enables automated computation of optimal steady states and periodic trajectories, and spits out corresponding tuned stage cost matrices.
 
+## Installation
+
+**TuneMPC** requires Python 3.5/3.6/3.7.
+
+1.  Get a local copy of `tunempc`:
+
+     ```
+     git clone https://github.com/jdeschut/tunempc.git
+     ```
+
+2.   Install the package with dependencies:
+
+     ```
+     pip3 install <path_to_installation_folder>/tunempc
+     ```
+
+The following steps are optional but increase performance and reliability or enable additional features.
+
+3. (optional) Install MOSEK SDP solver (free [academic licenses](https://www.mosek.com/products/academic-licenses/) available)
+
+     ```
+     pip3 install -f https://download.mosek.com/stable/wheel/index.html Mosek==9.0.98
+     ```
+
+4.  (optional) Install the `acados` software package for generating fast and embedded TuneMPC solvers.
+
+     ```
+     git submodule update --init --recursive
+     cd external/acados
+     mkdir build && cd build
+     cmake -DACADOS_WITH_QPOASES=ON ..
+     make install -j4 && cd ..
+     pip3 install interfaces/acados_template
+     export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:"<tunempc_root>/external/acados/lib"
+     ```
+
+     More detailed instruction can be found [here](https://github.com/jdeschut/acados/blob/master/interfaces/acados_template/README.md).
+
+5.  (optional) It is recommended to use HSL linear solvers as a plugin with IPOPT.
+ In order to get the HSL solvers and render them visible to CasADi, follow these [instructions](https://github.com/casadi/casadi/wiki/Obtaining-HSL).
+
 ## Using TuneMPC
 
 The interface of **TuneMPC** is based on the symbolic modeling framework [CasADi](https://web.casadi.org/).  
@@ -28,7 +69,6 @@ h = ca.Function('h',[x,u],[<insert constraints expr>]) # constraints >= 0
 p = <insert period of interest> # choose p=1 for steady-state
 ```
 
-
 Basic application of **TuneMPC** with a few lines of code:
 
 ```python
@@ -39,33 +79,21 @@ w_opt  = tuner.solve_ocp() # compute optimal p-periodic trajectory
 [H, q] = tuner.convexify() # compute economically tuned stage cost matrices
 ```
 
-## Installation
+Create a tracking MPC controller (terminal point constraint) based on the tuned stage cost matrices:
 
-**TuneMPC** requires Python 3.5 or later.
+```python
+ctrl = tuner.create_mpc('tuned', N = <insert MPC horizon>)
+u0 = ctrl.step(x0)  # compute feedback law
+```
 
-1.  Get a local copy of `tunempc`:
+(optional) Code-generate a fast and embeddable solver for this MPC controller using `acados` (see [installation instructions](#installation)):
+```python
+ode = <insert ode expr based on x,u> # ode or dae expression
+acados_ocp_solver, _ = ctrl.generate(ode) # generate solver
+u0 = ctrl.step_acados(x0) # solver can be called through python interface
+```
 
-     ```
-     git clone https://github.com/jdeschut/tunempc.git
-     ```
-
-2.   Install the package with dependencies:
-
-     ```
-     pip3 install <path_to_root_folder>/tunempc
-     ```
-
-3. (optional) Install MOSEK SDP solver (free [academic licenses](https://www.mosek.com/products/academic-licenses/) available)
-
-     ```
-     pip3 install -f https://download.mosek.com/stable/wheel/index.html Mosek==9.0.98
-     ```
-
-4.  (optional) Install the [acados](https://github.com/acados/acados/) software package for generating fast and embedded TuneMPC solvers. Follow these [instructions](https://github.com/acados/acados/blob/master/interfaces/acados_template/README.md) to install the Python interface.
-
-5.  (optional) It is recommended to use HSL linear solvers as a plugin with IPOPT.
- In order to get the HSL solvers and render them visible to CasADi, follow these [instructions](https://github.com/casadi/casadi/wiki/Obtaining-HSL).
-
+For a more complete overview of the available functionality, have a look at the different application [examples](https://github.com/jdeschut/tunempc/examples).
 ## Acknowledgments
 
 This project has received funding by DFG via Research Unit FOR 2401 and by an industrial project with the company [Kiteswarms Ltd](http://www.kiteswarms.com).

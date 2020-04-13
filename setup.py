@@ -29,7 +29,7 @@ if sys.version_info < (3,5):
     sys.exit('Python version 3.5 or later required. Exiting.')
 
 setup(name='tunempc',
-   version='0.1',
+   version='0.1.0',
    python_requires='>=3.5, <3.8',
    description='A tool for economic tuning of tracking (N)MPC problems',
    url='https://github.com/jdeschut/tunempc',

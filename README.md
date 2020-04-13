@@ -26,13 +26,15 @@ For user-provided system dynamics, constraints and economic objective, **TuneMPC
 
 ## Installation (optional)
 
-3. Install MOSEK SDP solver (free [academic licenses](https://www.mosek.com/products/academic-licenses/) available)
+The following features enable additional features and enhance reliability and performance.
+
+1. Install MOSEK SDP solver (free [academic licenses](https://www.mosek.com/products/academic-licenses/) available)
 
      ```
      pip3 install -f https://download.mosek.com/stable/wheel/index.html Mosek==9.0.98
      ```
 
-4.  Install the `acados` software package for generating fast and embedded TuneMPC solvers.
+2.  Install the `acados` software package for generating fast and embedded TuneMPC solvers.
 
      ```
      git submodule update --init --recursive
@@ -46,7 +48,7 @@ For user-provided system dynamics, constraints and economic objective, **TuneMPC
 
      More detailed instructions can be found [here](https://github.com/jdeschut/acados/blob/master/interfaces/acados_template/README.md).
 
-5.  It is recommended to use HSL linear solvers as a plugin with IPOPT.
+3.  It is recommended to use HSL linear solvers as a plugin with IPOPT.
  In order to get the HSL solvers and render them visible to CasADi, follow these [instructions](https://github.com/casadi/casadi/wiki/Obtaining-HSL).
 
 ## Using TuneMPC

@@ -24,15 +24,15 @@ For user-provided system dynamics, constraints and economic objective, **TuneMPC
      pip3 install <path_to_installation_folder>/tunempc
      ```
 
-The following steps are optional but increase performance and reliability or enable additional features.
+## Installation (optional)
 
-3. (optional) Install MOSEK SDP solver (free [academic licenses](https://www.mosek.com/products/academic-licenses/) available)
+3. Install MOSEK SDP solver (free [academic licenses](https://www.mosek.com/products/academic-licenses/) available)
 
      ```
      pip3 install -f https://download.mosek.com/stable/wheel/index.html Mosek==9.0.98
      ```
 
-4.  (optional) Install the `acados` software package for generating fast and embedded TuneMPC solvers.
+4.  Install the `acados` software package for generating fast and embedded TuneMPC solvers.
 
      ```
      git submodule update --init --recursive
@@ -44,9 +44,9 @@ The following steps are optional but increase performance and reliability or ena
      export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:"<tunempc_root>/external/acados/lib"
      ```
 
-     More detailed instruction can be found [here](https://github.com/jdeschut/acados/blob/master/interfaces/acados_template/README.md).
+     More detailed instructions can be found [here](https://github.com/jdeschut/acados/blob/master/interfaces/acados_template/README.md).
 
-5.  (optional) It is recommended to use HSL linear solvers as a plugin with IPOPT.
+5.  It is recommended to use HSL linear solvers as a plugin with IPOPT.
  In order to get the HSL solvers and render them visible to CasADi, follow these [instructions](https://github.com/casadi/casadi/wiki/Obtaining-HSL).
 
 ## Using TuneMPC
@@ -94,6 +94,7 @@ u0 = ctrl.step_acados(x0) # solver can be called through python interface
 ```
 
 For a more complete overview of the available functionality, have a look at the different application [examples](https://github.com/jdeschut/tunempc/examples).
+
 ## Acknowledgments
 
 This project has received funding by DFG via Research Unit FOR 2401 and by an industrial project with the company [Kiteswarms Ltd](http://www.kiteswarms.com).

@@ -222,7 +222,7 @@ if ACADOS_CODEGENERATE:
             opts['hessian_approx'] = 'GAUSS_NEWTON'
             opts['qp_solver'] = 'FULL_CONDENSING_HPIPM'
 
-        _, _ = ctrls[ctrl_key].generate(ode, opts = opts, name = ctrl_key+'_cstr')
+        _, _ = ctrls[ctrl_key].generate(ode, opts = opts, name = ctrl_key+'_evaporation')
         ctrls_acados[ctrl_key+'_acados'] = ctrls[ctrl_key]
 
     # recompute equivalence check

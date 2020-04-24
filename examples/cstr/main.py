@@ -99,8 +99,7 @@ if ACADOS_CODEGENERATE:
 
     # solver options
     opts = {}
-    opts['qp_solver'] = 'FULL_CONDENSING_QPOASES' # PARTIAL_CONDENSING_HPIPM
-    opts['hessian_approx'] = 'GAUSS_NEWTON'
+    opts['qp_solver'] = 'FULL_CONDENSING_HPIPM' # PARTIAL_CONDENSING_HPIPM
     opts['integrator_type'] = 'ERK'
     opts['nlp_solver_type'] = 'SQP' # SQP_RTI
     opts['qp_solver_cond_N'] = 1 # ???
@@ -110,11 +109,14 @@ if ACADOS_CODEGENERATE:
     opts['nlp_solver_max_iter'] = 300
     opts['nlp_solver_step_length'] = 1.0
 
-    acados_ocp_solver, acados_integrator = ctrls['tuned'].generate(
-        ode, opts = opts, name = 'unicycle'
-        )
-
-    ctrls_acados = {'tuned_acados': ctrls['tuned']}
+    ctrls_acados = {}
+    for ctrl_key in list(ctrls.keys()):
+        if ctrl_key == 'economic':
+            opts['hessian_approx'] = 'EXACT'
+        else:
+            opts['hessian_approx'] = 'GAUSS_NEWTON'
+        _, _ = ctrls[ctrl_key].generate(ode, opts = opts, name = ctrl_key+'_cstr')
+        ctrls_acados[ctrl_key+'_acados'] = ctrls[ctrl_key]
 
 # check equivalence
 alpha = np.linspace(-0.1, 1.0, 10)

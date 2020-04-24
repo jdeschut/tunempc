@@ -831,18 +831,20 @@ class Pmpc(object):
             xref = np.squeeze(self.__ref[idx][:self.__nx], axis = 1)
             uref = np.squeeze(self.__ref[idx][self.__nx: self.__nx + self.__nu + self.__ns], axis = 1)
 
-            # construct output reference with gradient term
-            yref = np.squeeze(
-                ca.vertcat(xref,uref).full() - \
-                ct.mtimes(
-                    np.linalg.inv(self.__Href[idx][0]), # inverse of weighting matrix
-                    self.__qref[idx][0].T).full(), # gradient term
-                axis = 1
-                )
-            self.__acados_ocp_solver.set(i, 'yref', yref)
+            if self.__type == 'tracking':
 
-            # update tuning matrix
-            self.__acados_ocp_solver.cost_set(i, 'W', self.__Href[idx][0])
+                # construct output reference with gradient term
+                yref = np.squeeze(
+                    ca.vertcat(xref,uref).full() - \
+                    ct.mtimes(
+                        np.linalg.inv(self.__Href[idx][0]), # inverse of weighting matrix
+                        self.__qref[idx][0].T).full(), # gradient term
+                    axis = 1
+                    )
+                self.__acados_ocp_solver.set(i, 'yref', yref)
+
+                # update tuning matrix
+                self.__acados_ocp_solver.cost_set(i, 'W', self.__Href[idx][0])
 
             # update constraint bounds
             C = self.__S['C'][idx][:,:self.__nx]

@@ -82,15 +82,14 @@ tgridx = [Ts*k for k in range(N+1)]
 ctrls = {}
 
 # economic mpc controller
-opts = {'ipopt_presolve': False, 'slack_flag': 'active'}
-ctrls['economic'] = tuner.create_mpc('economic',N, opts=opts)
+ctrls['economic'] = tuner.create_mpc('economic',N)
 
 # normal tracking mpc controller
 tuningTn = {'H': [np.diag([0.2, 1.0, 0.5, 0.2, 0.5, 0.5])], 'q': S['q']}
-ctrls['tracking'] = tuner.create_mpc('tracking', N, opts=opts, tuning=tuningTn)
+ctrls['tracking'] = tuner.create_mpc('tracking', N, tuning=tuningTn)
 
 # tuned tracking mpc controller
-ctrls['tuned'] = tuner.create_mpc('tuned', N, opts=opts)
+ctrls['tuned'] = tuner.create_mpc('tuned', N)
 
 ACADOS_CODEGENERATE = False
 if ACADOS_CODEGENERATE:

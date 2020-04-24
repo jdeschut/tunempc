@@ -204,22 +204,25 @@ if ACADOS_CODEGENERATE:
     # solver options
     opts = {}
     opts['qp_solver'] = 'FULL_CONDENSING_HPIPM' # PARTIAL_CONDENSING_HPIPM
-    opts['hessian_approx'] = 'GAUSS_NEWTON'
     opts['integrator_type'] = 'IRK'
     opts['nlp_solver_type'] = 'SQP' # SQP_RTI
     opts['qp_solver_cond_N'] = 1 # ???
-    opts['print_level'] = 0
+    opts['print_level'] = 1
     opts['sim_method_num_steps'] = 20
     opts['tf'] = N # h = tf/N = 1 [s]
     # opts['nlp_solver_max_iter'] = 30
     # opts['nlp_solver_step_length'] = 0.9
 
-    acados_ocp_solver, acados_integrator = ctrls['tuned'].generate(
-        ode, opts = opts, name = 'evaporation_process'
-        )
+    ctrls_acados = {}
+    for ctrl_key in list(ctrls.keys()):
+        if ctrl_key == 'economic':
+            opts['hessian_approx'] = 'EXACT'
+        else:
+            opts['hessian_approx'] = 'GAUSS_NEWTON'
+        _, _ = ctrls[ctrl_key].generate(ode, opts = opts, name = ctrl_key+'_cstr')
+        ctrls_acados[ctrl_key+'_acados'] = ctrls[ctrl_key]
 
-    # recompute tuned feedback policy
-    ctrls_acados = {'tuned': ctrls['tuned']}
+    # recompute equivalence check
     log_acados = clt.check_equivalence(
         ctrls_acados,
         objective(x,u,data),

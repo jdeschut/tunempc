@@ -203,11 +203,10 @@ if ACADOS_CODEGENERATE:
 
     # solver options
     opts = {}
-    opts['qp_solver'] = 'FULL_CONDENSING_HPIPM' # PARTIAL_CONDENSING_HPIPM
     opts['integrator_type'] = 'IRK'
     opts['nlp_solver_type'] = 'SQP' # SQP_RTI
     opts['qp_solver_cond_N'] = 1 # ???
-    opts['print_level'] = 1
+    opts['print_level'] = 0
     opts['sim_method_num_steps'] = 20
     opts['tf'] = N # h = tf/N = 1 [s]
     # opts['nlp_solver_max_iter'] = 30
@@ -217,8 +216,12 @@ if ACADOS_CODEGENERATE:
     for ctrl_key in list(ctrls.keys()):
         if ctrl_key == 'economic':
             opts['hessian_approx'] = 'EXACT'
+            opts['nlp_solver_step_length'] = 0.9
+            opts['qp_solver'] = 'PARTIAL_CONDENSING_HPIPM'
         else:
             opts['hessian_approx'] = 'GAUSS_NEWTON'
+            opts['qp_solver'] = 'FULL_CONDENSING_HPIPM'
+
         _, _ = ctrls[ctrl_key].generate(ode, opts = opts, name = ctrl_key+'_cstr')
         ctrls_acados[ctrl_key+'_acados'] = ctrls[ctrl_key]
 

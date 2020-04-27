@@ -514,11 +514,22 @@ class Pmpc(object):
         if self.__type == 'economic':
             model.cost_expr_ext_cost = self.__cost(model.x, model.u[:self.__nu])
 
+
         # create acados ocp
         ocp = AcadosOcp()
         ocp.model = model
         ny = nx + nu
         ny_e = nx
+
+        if 'integrator_type' in opts and opts['integrator_type'] == 'GNSF':
+            # from acados_template import acados_dae_model_json_dump
+            # acados_dae_model_json_dump(model)
+            # status = os.system('octave detect_gnsf_from_json.m')
+            # load gnsf from json
+            with open(model.name + '_gnsf_functions.json', 'r') as f:
+                import json
+                gnsf_dict = json.load(f)
+            ocp.gnsf_model = gnsf_dict
 
         # set horizon length
         ocp.dims.N = self.__N

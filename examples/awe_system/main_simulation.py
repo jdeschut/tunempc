@@ -147,7 +147,7 @@ ctrls['TUNEMPC'] = pmpc.Pmpc(
     options = opts
 )
 
-ACADOS_CODEGENERATE = False
+ACADOS_CODEGENERATE = True
 if ACADOS_CODEGENERATE:
 
     # get system dae
@@ -157,7 +157,7 @@ if ACADOS_CODEGENERATE:
     opts = {}
     opts['qp_solver'] = 'FULL_CONDENSING_HPIPM' # PARTIAL_CONDENSING_HPIPM
     opts['hessian_approx'] = 'GAUSS_NEWTON'
-    opts['integrator_type'] = 'IRK'
+    opts['integrator_type'] = 'IRK' # ERK, IRK, GNSF
     opts['nlp_solver_type'] = 'SQP' # SQP_RTI
     # opts['qp_solver_cond_N'] = Nmpc # ???
     opts['print_level'] = 1

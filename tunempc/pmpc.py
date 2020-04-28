@@ -847,12 +847,13 @@ class Pmpc(object):
                 self.__acados_ocp_solver.cost_set(i, 'W', self.__Href[idx][0])
 
             # update constraint bounds
-            C = self.__S['C'][idx][:,:self.__nx]
-            D = self.__S['C'][idx][:,self.__nx:]
-            lg = -self.__S['e'][idx] + ct.mtimes(C,xref).full() + ct.mtimes(D,uref).full()
-            ug = 1e8 - self.__S['e'][idx] + ct.mtimes(C,xref).full() + ct.mtimes(D,uref).full()
-            self.__acados_ocp_solver.constraints_set(i, 'lg', np.squeeze(lg, axis = 1))
-            self.__acados_ocp_solver.constraints_set(i, 'ug', np.squeeze(ug, axis = 1))
+            if self.__h is not None:
+                C = self.__S['C'][idx][:,:self.__nx]
+                D = self.__S['C'][idx][:,self.__nx:]
+                lg = -self.__S['e'][idx] + ct.mtimes(C,xref).full() + ct.mtimes(D,uref).full()
+                ug = 1e8 - self.__S['e'][idx] + ct.mtimes(C,xref).full() + ct.mtimes(D,uref).full()
+                self.__acados_ocp_solver.constraints_set(i, 'lg', np.squeeze(lg, axis = 1))
+                self.__acados_ocp_solver.constraints_set(i, 'ug', np.squeeze(ug, axis = 1))
 
         # update terminal constraint
         idx = (self.__index_acados+self.__N)%self.__Nref
@@ -910,8 +911,9 @@ class Pmpc(object):
                 lam_h.append(self.__scost) # us
                 t.append(np.zeros((self.__nsc,))) # slg > 0
                 t.append(np.zeros((self.__nsc,))) # sug > 0
-            self.__acados_ocp_solver.set(i, "lam", np.squeeze(ct.vertcat(*lam_h).full()))
-            self.__acados_ocp_solver.set(i, "t", np.squeeze(ct.vertcat(*t).full()))
+            if len(lam_h) != 0:
+                self.__acados_ocp_solver.set(i, "lam", np.squeeze(ct.vertcat(*lam_h).full()))
+                self.__acados_ocp_solver.set(i, "t", np.squeeze(ct.vertcat(*t).full()))
 
         # terminal state
         idx = (self.__index_acados+self.__N)%self.__Nref

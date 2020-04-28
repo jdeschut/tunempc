@@ -132,14 +132,17 @@ ctrls = {}
 
 # economic mpc controller
 opts['ipopt_presolve'] = True
-ctrlE = tuner.create_mpc('economic', N, opts=opts)
+ctrls['EMPC'] = tuner.create_mpc('economic', N, opts=opts)
 
 # normal tracking mpc controller
 tuningTn = {'H': [np.diag([1.0, 1.0, 1.0, 1.0, 1.0])]*N, 'q': S['q']}
-ctrlTn = tuner.create_mpc('tracking', N, opts=opts, tuning = tuningTn)
+ctrls['TMPC'] = tuner.create_mpc('tracking', N, opts=opts, tuning = tuningTn)
 
 # tuned tracking mpc controller
-ctrlTt = tuner.create_mpc('tuned', N, opts=opts)
+ctrls['TUNEMPC'] = tuner.create_mpc('tuned', N, opts=opts)
+
+# list of controller names
+ctrl_list = list(ctrls.keys())
 
 # generate embedded solver
 ACADOS_CODEGENERATE = False
@@ -161,84 +164,68 @@ if ACADOS_CODEGENERATE:
     opts['nlp_solver_max_iter'] = 300
     opts['nlp_solver_step_length'] = 1.0
 
-    acados_ocp_solver, acados_integrator = ctrlTt.generate(
-        ode, opts = opts, name = 'unicycle'
-        )
+    for ctrl_key in list(ctrls.keys()):
+        _, _ = ctrls[ctrl_key].generate(ode, opts = opts, name = 'unicycle_'+ctrl_key)
+        ctrl_list += [ctrl_key+'_ACADOS']
 
 # disturbance
 dist_z  = [0.1, 0.1, 0.5, 0.5]
 Nstep   = [1, 34, 69, 105]
 
-# initialize
-uE, uTn, uTt, uTt_a = [], [], [], []
-lE, lTn, lTt, lTt_a = [], [], [], []
-
-x_initE  = wsol['x',0]
-x_initTn = wsol['x',0]
-x_initTt = wsol['x',0]
-x_initTt_a = wsol['x',0]
+# plant simulator
 plant_sim = dynamics(x, u, data, h= T/N)[0]
 
+# initialize
+x, u, l = {}, {}, {}
+for ctrl_key in ctrl_list:
+    x[ctrl_key] = wsol['x',0]
+    u[ctrl_key] = []
+    l[ctrl_key] = []
+
+
+
+# closed-loop simulation
 Nsim  = 250
 tgrid = [T/N*i for i in range(Nsim)]
 for k in range(Nsim):
 
     print('Closed-loop simulation step: {}/{}'.format(k+1,Nsim))
 
-    if k in Nstep:
-        dist = dist_z[Nstep.index(k)]
-        x_initE[0]  += dist
-        x_initTn[0] += dist
-        x_initTt[0] += dist
-        if ACADOS_CODEGENERATE:
-            x_initTt_a[0] += dist
-
-    print('Compute EMPC feedback...')
-    uE.append(ctrlE.step(x_initE))
-    print('Compute TMPC feedback...')
-    uTn.append(ctrlTn.step(x_initTn))
-    print('Compute TuneMPC feedback...')
-    uTt.append(ctrlTt.step(x_initTt))
-    if ACADOS_CODEGENERATE:
-        print('Compute TuneMPC_acados feedback...')
-        uTt_a.append(ctrlTt.step_acados(x_initTt_a))
-
+    # reference stage cost
     lOpt = tuner.l(wsol['x', k%N], wsol['u',k%N])
-    lE.append(tuner.l(x_initE,uE[-1]) - lOpt)
-    lTn.append(tuner.l(x_initTn,uTn[-1]) - lOpt)
-    lTt.append(tuner.l(x_initTt,uTt[-1]) - lOpt)
-    if ACADOS_CODEGENERATE:
-        lTt_a.append(tuner.l(x_initTt_a,uTt_a[-1]) - lOpt)
 
-    # forward sim
-    x_initE  = plant_sim(x0 = x_initE,  p = uE[-1])['xf']
-    x_initTn = plant_sim(x0 = x_initTn, p = uTn[-1])['xf']
-    x_initTt = plant_sim(x0 = x_initTt, p = uTt[-1])['xf']
-    if ACADOS_CODEGENERATE:
-        x_initTt_a = plant_sim(x0 = x_initTt_a, p = uTt_a[-1])['xf']
+    for ctrl_key in ctrl_list:
+
+        # add disturbance
+        if k in Nstep:
+            dist = dist_z[Nstep.index(k)]
+            x[ctrl_key][0] += dist
+        
+        # compute feedback
+        print('Compute {} feedback...'.format(ctrl_key))
+        if ctrl_key[-6:] == 'ACADOS':
+            u[ctrl_key].append(ctrls[ctrl_key].step_acados(x[ctrl_key]))
+        else:
+            u[ctrl_key].append(ctrls[ctrl_key].step(x[ctrl_key]))
+        l[ctrl_key].append(tuner.l(x[ctrl_key], u[ctrl_key][-1])-lOpt)
+
+        # forward sim
+        x[ctrl_key] = plant_sim(x0 = x[ctrl_key], p = u[ctrl_key][-1])['xf']
 
 # plot feedback controls to check equivalence
-for i in range(nu):
-    plt.figure(i)
-    plt.step(tgrid,[uE[j][i] - wsol['u',j%N][i] for j in range(len(uE))])
-    plt.step(tgrid,[uTn[j][i] - wsol['u',j%N][i] for j in range(len(uTn))])
-    plt.step(tgrid,[uTt[j][i] - wsol['u',j%N][i] for j in range(len(uTt))])
-    if ACADOS_CODEGENERATE:
-        plt.step(tgrid,[uTt_a[j][i] - wsol['u',j%N][i] for j in range(len(uTt))],linestyle='--')
-    plt.autoscale(enable=True, axis='x', tight=True)
-    plt.grid(True)
-    legend = ['EMPC', 'TMPC', 'TuneMPC']
-    if ACADOS_CODEGENERATE:
-        legend += ['TuneMPC_acados']
-    plt.legend(legend)
-    plt.title('Feedback control deviation')
+for ctrl_key in ctrl_list:
+    for i in range(nu):
+        plt.figure(i)
+        plt.step(tgrid,[u[ctrl_key][j][i] - wsol['u',j%N][i] for j in range(len(tgrid))])
+        plt.autoscale(enable=True, axis='x', tight=True)
+        plt.grid(True)
+        legend = ctrl_list
+        plt.legend(legend)
+        plt.title('Feedback control deviation')
 
 plt.figure(nu)
-plt.step(tgrid,lE)
-plt.step(tgrid,lTn)
-plt.step(tgrid,lTt)
-if ACADOS_CODEGENERATE:
-    plt.step(tgrid,lTt_a, linestyle = '--')
+for ctrl_key in ctrl_list:
+    plt.step(tgrid,l[ctrl_key])
 plt.legend(legend)
 plt.autoscale(enable=True, axis='x', tight=True)
 plt.grid(True)

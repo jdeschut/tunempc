@@ -163,7 +163,7 @@ if ACADOS_CODEGENERATE:
     opts['print_level'] = 1
     opts['sim_method_num_steps'] = 50
     opts['tf'] = Nmpc*user_input['ts']
-    opts['nlp_solver_max_iter'] = 50
+    opts['nlp_solver_max_iter'] = 100
     opts['nlp_solver_step_length'] = 0.9
 
     acados_ocp_solver, acados_integrator = ctrls['TUNEMPC'].generate(

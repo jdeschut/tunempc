@@ -182,8 +182,6 @@ for ctrl_key in ctrl_list:
     u[ctrl_key] = []
     l[ctrl_key] = []
 
-
-
 # closed-loop simulation
 Nsim  = 250
 tgrid = [T/N*i for i in range(Nsim)]
@@ -200,11 +198,11 @@ for k in range(Nsim):
         if k in Nstep:
             dist = dist_z[Nstep.index(k)]
             x[ctrl_key][0] += dist
-        
+
         # compute feedback
         print('Compute {} feedback...'.format(ctrl_key))
         if ctrl_key[-6:] == 'ACADOS':
-            u[ctrl_key].append(ctrls[ctrl_key].step_acados(x[ctrl_key]))
+            u[ctrl_key].append(ctrls[ctrl_key[:-7]].step_acados(x[ctrl_key]))
         else:
             u[ctrl_key].append(ctrls[ctrl_key].step(x[ctrl_key]))
         l[ctrl_key].append(tuner.l(x[ctrl_key], u[ctrl_key][-1])-lOpt)

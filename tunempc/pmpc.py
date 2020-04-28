@@ -425,6 +425,14 @@ class Pmpc(object):
 
         # solve
         status = self.__acados_ocp_solver.solve()
+
+        # timings
+        # np.append(self.__acados_times, self.__acados_ocp_solver.get_stats("time_tot"))
+        print("acados timings: total: ", self.__acados_ocp_solver.get_stats("time_tot"), \
+            " lin: ", self.__acados_ocp_solver.get_stats("time_lin"), \
+            " sim: ", self.__acados_ocp_solver.get_stats("time_sim"), " qp: ", \
+                 self.__acados_ocp_solver.get_stats("time_qp"))
+
         # if status != 0:
         #     raise Exception('acados solver returned status {}. Exiting.'.format(status))
 

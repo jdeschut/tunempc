@@ -58,6 +58,7 @@ def check_equivalence(controllers, cost, h, x0, dx, alpha, flag = 'tunempc'):
             elif flag == 'acados':
                 u0 = controllers[name].step_acados(x_init)
                 wsol = controllers[name].w_sol_acados
+                log[-1]['log'][name] = controllers[name].log_acados
             log[-1]['u'][name] = wsol['u',:]
             log[-1]['x'][name] = wsol['x',:]
             log[-1]['l'][name] = [cost(wsol['x',k],wsol['u',k]).full()[0][0] for k in range(len(wsol['u',:]))]
@@ -105,7 +106,7 @@ def closed_loop_sim(controllers, cost, h, F, x0, N, flag = 'tunempc'):
 def initialize_log(controllers, x0=None):
     
     # initialize log
-    log = {'u':{},'l':{},'h':{}}
+    log = {'u':{},'l':{},'h':{}, 'log':{}}
     
     if x0 is not None:
         log['x'] = {}

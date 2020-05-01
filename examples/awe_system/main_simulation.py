@@ -112,8 +112,8 @@ lam_g0['dyn'] = 0.0
 lam_g0['g'] = 0.0
   
 # standard tracking MPC
-tuningTn = {'H': [np.diag((nx+nu)*[1]+ns*[0.0])]*user_input['p'], 'q': sol['S']['q']}
-ctrls['TMPC-1'] = pmpc.Pmpc(
+tuningTn = {'H': [np.diag((nx+nu)*[1]+ns*[1e-10])]*user_input['p'], 'q': sol['S']['q']}
+ctrls['TMPC_1'] = pmpc.Pmpc(
     N = Nmpc,
     sys = mpc_sys,
     cost = tracking_cost,
@@ -123,9 +123,9 @@ ctrls['TMPC-1'] = pmpc.Pmpc(
     options = opts
 )
 # # manually tuned tracking MPC
-Ht2 = [np.diag([0.1,0.1,0.1, 1.0, 1.0, 1.0, 1.0e3, 1.0, 100.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0])]*user_input['p']
+Ht2 = [np.diag([0.1,0.1,0.1, 1.0, 1.0, 1.0, 1.0e3, 1.0, 100.0, 1.0, 1.0, 1.0, 1e-10, 1e-10, 1e-10])]*user_input['p']
 tuningTn2 = {'H': Ht2, 'q': sol['S']['q']}
-ctrls['TMPC-2'] = pmpc.Pmpc(
+ctrls['TMPC_2'] = pmpc.Pmpc(
     N = Nmpc,
     sys = mpc_sys,
     cost = tracking_cost,

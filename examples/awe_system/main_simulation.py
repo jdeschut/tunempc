@@ -147,7 +147,7 @@ ctrls['TUNEMPC'] = pmpc.Pmpc(
     options = opts
 )
 
-ACADOS_CODEGENERATE = False
+ACADOS_CODEGENERATE = True
 if ACADOS_CODEGENERATE:
 
     # get system dae
@@ -167,7 +167,7 @@ if ACADOS_CODEGENERATE:
     ctrls_acados = {}
     for ctrl_key in list(ctrls.keys()):
         if ctrl_key == 'EMPC':
-            opts['hessian_approx'] = 'GAUSS_NEWTON'
+            opts['hessian_approx'] = 'GAUSS_NEWTON' # EXACT not supported for nz > 0
             opts['qp_solver'] = 'PARTIAL_CONDENSING_HPIPM'
 
         else:

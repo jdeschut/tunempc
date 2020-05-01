@@ -436,6 +436,7 @@ class Pmpc(object):
             if 'us' in self.__vars:
                 self.__w_sol_acados['us',i] = self.__acados_ocp_solver.get(i,"u")[self.__nu:]
         self.__w_sol_acados['x',self.__N] = self.__acados_ocp_solver.get(self.__N,"x")
+        self.__extract_acados_solver_stats()
 
         # feedback policy
         u0 = self.__acados_ocp_solver.get(0, "u")[:self.__nu]
@@ -690,6 +691,17 @@ class Pmpc(object):
             'nAS': []
         }
 
+        self.__log_acados = {
+            'time_tot': [],
+            'time_lin': [],
+            'time_sim': [],
+            'time_qp': [],
+            'sqp_iter': [],
+            'time_reg': [],
+            'time_qp_xcond': [],
+            'time_qp_solver_call': [],
+        }
+
         return None
 
     def __extract_solver_stats(self):
@@ -707,6 +719,13 @@ class Pmpc(object):
         self.__log['nAC'].append(nAC)
         self.__log['idx_AC'].append(nAC)
         self.__log['nAS'].append(info['nAS'])
+
+        return None
+
+    def __extract_acados_solver_stats(self):
+
+        for key in list(self.__log_acados.keys()):
+            self.__log_acados[key].append(self.__acados_ocp_solver.get_stats(key))
 
         return None
 
@@ -941,6 +960,10 @@ class Pmpc(object):
     @property
     def log(self):
         return self.__log
+
+    @property
+    def log_acados(self):
+        return self.__log_acados
 
     @property
     def index(self):

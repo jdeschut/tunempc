@@ -180,6 +180,7 @@ if ACADOS_CODEGENERATE:
 # initialize and set-up open-loop simulation
 alpha = np.linspace(-1.0, 1.0, alpha_steps+1) # deviation sweep grid
 dz = 8 # max. deviation
+alpha = [0.1]
 x0 = sol['wsol']['x',0]
 tgrid = [1/user_input['p']*i for i in range(Nmpc)]
 tgridx = tgrid + [tgrid[-1]+1/user_input['p']]
@@ -362,6 +363,15 @@ if ACADOS_CODEGENERATE:
     plt.xlabel('alpha [-]')
     plt.ylabel('t [s]')
 
+    from statistics import mean
+    mean_timings = {'time_lin': [], 'time_qp_xcond': [], 'time_qp': []}
+    for name in ctrls_list:
+        if name[-6:] == 'ACADOS':
+            plot_log = log_acados
+            for timing in list(mean_timings.keys()):
+                mean_timings[timing].append(
+                     mean([plot_log[k]['log'][name][timing][0][0]/plot_log[k]['log'][name]['sqp_iter'][0][0] for k in range(len(alpha))])
+                )
     from tabulate import tabulate
     print(tabulate([
         ['time_lin']+mean_timings['time_lin'],

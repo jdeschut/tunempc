@@ -159,7 +159,7 @@ if ACADOS_CODEGENERATE:
     opts['nlp_solver_type'] = 'SQP' # SQP_RTI
     # opts['qp_solver_cond_N'] = Nmpc # ???
     opts['print_level'] = 1
-    opts['sim_method_num_steps'] = 50
+    opts['sim_method_num_steps'] = 1
     opts['tf'] = Nmpc*user_input['ts']
     opts['nlp_solver_max_iter'] = 100
     opts['nlp_solver_step_length'] = 0.9
@@ -340,4 +340,23 @@ plt.legend(ctrls_list)
 plt.title('Transient cost')
 plt.xlabel(r'$\alpha \ \mathrm{[-]}$')
 
+# plot time per iteration
+plt.figure(5)
+for name in ctrls_list:
+    if name[-6:] == 'ACADOS':
+        plot_log = log_acados
+        plt.plot(
+            alpha,
+            [plot_log[k]['log'][name]['time_tot'][0]/plot_log[k]['log'][name]['sqp_iter'][0] for k in range(len(alpha))],
+            marker = ctrls_markers[name],
+            color = ctrls_colors[name[:-7]],
+            linestyle = ctrls_lstyle[name],
+            markersize = 2,
+            linewidth = 2
+        )
+plt.grid(True)
+plt.legend(list(plot_log[0]['log'].keys()))
+plt.title("Time per iteration")
+plt.xlabel('alpha [-]')
+plt.ylabel('t [s]')
 plt.show()

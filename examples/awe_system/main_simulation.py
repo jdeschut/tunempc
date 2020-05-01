@@ -172,7 +172,7 @@ if ACADOS_CODEGENERATE:
 
         else:
             opts['hessian_approx'] = 'GAUSS_NEWTON'
-            opts['qp_solver'] = 'FULL_CONDENSING_HPIPM'
+            opts['qp_solver'] = 'PARTIAL_CONDENSING_HPIPM'
 
         _, _ = ctrls[ctrl_key].generate(alg, opts = opts, name = 'awe_'+ctrl_key)
         ctrls_acados[ctrl_key+'_ACADOS'] = ctrls[ctrl_key]

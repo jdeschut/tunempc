@@ -155,8 +155,6 @@ if ACADOS_CODEGENERATE:
 
     # solver options
     opts = {}
-    opts['qp_solver'] = 'FULL_CONDENSING_HPIPM' # PARTIAL_CONDENSING_HPIPM
-    opts['hessian_approx'] = 'GAUSS_NEWTON'
     opts['integrator_type'] = 'IRK'
     opts['nlp_solver_type'] = 'SQP' # SQP_RTI
     # opts['qp_solver_cond_N'] = Nmpc # ???
@@ -166,9 +164,18 @@ if ACADOS_CODEGENERATE:
     opts['nlp_solver_max_iter'] = 100
     opts['nlp_solver_step_length'] = 0.9
 
-    acados_ocp_solver, acados_integrator = ctrls['TUNEMPC'].generate(
-        alg, opts = opts, name = 'awe_system'
-        )
+    ctrls_acados = {}
+    for ctrl_key in list(ctrls.keys()):
+        if ctrl_key == 'EMPC':
+            opts['hessian_approx'] = 'GAUSS_NEWTON'
+            opts['qp_solver'] = 'PARTIAL_CONDENSING_HPIPM'
+
+        else:
+            opts['hessian_approx'] = 'GAUSS_NEWTON'
+            opts['qp_solver'] = 'FULL_CONDENSING_HPIPM'
+
+        _, _ = ctrls[ctrl_key].generate(alg, opts = opts, name = 'awe_'+ctrl_key)
+        ctrls_acados[ctrl_key+'_ACADOS'] = ctrls[ctrl_key]
 
 # initialize and set-up open-loop simulation
 alpha = np.linspace(-1.0, 1.0, alpha_steps+1) # deviation sweep grid
@@ -195,7 +202,7 @@ for alph in alpha:
     log.append(clt.check_equivalence(ctrls, user_input['l'], user_input['h'], x0, x_init-x0, [1.0])[-1])
     if ACADOS_CODEGENERATE:
         log_acados.append(clt.check_equivalence(
-            {'TUNEMPC_ACADOS':ctrls['TUNEMPC']},
+            ctrls_acados,
             user_input['l'],
             user_input['h'],
             x0,
@@ -211,33 +218,34 @@ lw = 2
 ctrls_colors = {
     'EMPC': 'blue',
     'TUNEMPC': 'green',
-    'TMPC-1': 'red',
-    'TMPC-2': 'orange'
+    'TMPC_1': 'red',
+    'TMPC_2': 'orange'
 }
 ctrls_lstyle = {
     'EMPC': 'solid',
     'TUNEMPC': 'dashed',
-    'TMPC-1': 'dashdot',
-    'TMPC-2': 'dotted'
+    'TMPC_1': 'dashdot',
+    'TMPC_2': 'dotted'
 }
 ctrls_markers =  {
     'EMPC': '.',
     'TUNEMPC': 'o',
-    'TMPC-1': '^',
-    'TMPC-2': 'x'
+    'TMPC_1': '^',
+    'TMPC_2': 'x'
 }
 
 if ACADOS_CODEGENERATE:
-    ctrls_colors['TUNEMPC_ACADOS'] ='gray'
-    ctrls_lstyle['TUNEMPC_ACADOS'] = 'dashed'
-    ctrls_markers['TUNEMPC_ACADOS'] = 'o'
+    for ctrl_key in list(ctrls_acados.keys()):
+        ctrls_colors[ctrl_key] = 'gray'
+        ctrls_lstyle[ctrl_key] = ctrls_lstyle[ctrl_key[:-7]]
+        ctrls_markers[ctrl_key] = ctrls_markers[ctrl_key[:-7]]
 
 ctrls_list = list(ctrls_colors.keys())
 # plot feedback equivalence
 plt.figure(1)
 for name in ctrls_list:
     if name != 'EMPC':
-        if name == 'TUNEMPC_ACADOS':
+        if name[-6:] == 'ACADOS':
             plot_log = log_acados
         else:
             plot_log = log
@@ -264,7 +272,7 @@ plt.xlabel(r'$\Delta z \ \mathrm{[m]}$')
 # plot stage cost deviation over time
 plt.figure(2)
 for name in ctrls_list:
-    if name == 'TUNEMPC_ACADOS':
+    if name[-6:] == 'ACADOS':
         plot_log = log_acados
     else:
         plot_log = log
@@ -292,7 +300,7 @@ for i in range(nx):
         plt.xlabel('t - [s]')
 
     for name in ctrls_list:
-        if name == 'TUNEMPC_ACADOS':
+        if name[-6:] == 'ACADOS':
             plot_log = log_acados
         else:
             plot_log = log
@@ -310,7 +318,7 @@ for i in range(nx):
 plt.figure(4)
 transient_cost = {}
 for name in ctrls_list:
-    if name == 'TUNEMPC_ACADOS':
+    if name[-6:] == 'ACADOS':
         plot_log = log_acados
     else:
         plot_log = log

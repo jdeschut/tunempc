@@ -161,7 +161,7 @@ if ACADOS_CODEGENERATE:
     opts['print_level'] = 1
     opts['sim_method_num_steps'] = 1
     opts['tf'] = Nmpc*user_input['ts']
-    opts['nlp_solver_max_iter'] = 100
+    opts['nlp_solver_max_iter'] = 10
     opts['nlp_solver_step_length'] = 0.9
 
     ctrls_acados = {}
@@ -180,6 +180,7 @@ if ACADOS_CODEGENERATE:
 # initialize and set-up open-loop simulation
 alpha = np.linspace(-1.0, 1.0, alpha_steps+1) # deviation sweep grid
 dz = 8 # max. deviation
+alpha = [0.1]
 x0 = sol['wsol']['x',0]
 tgrid = [1/user_input['p']*i for i in range(Nmpc)]
 tgridx = tgrid + [tgrid[-1]+1/user_input['p']]
@@ -359,4 +360,33 @@ plt.legend(list(plot_log[0]['log'].keys()))
 plt.title("Time per iteration")
 plt.xlabel('alpha [-]')
 plt.ylabel('t [s]')
+
+# timings bar graph
+from statistics import mean
+mean_timings = {'time_lin': [], 'time_qp_xcond': [], 'time_qp': []}
+for name in ctrls_list:
+    if name[-6:] == 'ACADOS':
+        plot_log = log_acados
+        for timing in list(mean_timings.keys()):
+            mean_timings[timing].append(
+                 mean([plot_log[k]['log'][name][timing][0][0]/plot_log[k]['log'][name]['sqp_iter'][0][0] for k in range(len(alpha))])
+            )
+plt.figure(6)
+ind = np.arange(4)
+plt.bar(ind, mean_timings['time_lin'], 0.35)
+plt.bar(ind, mean_timings['time_qp_xcond'], 0.35, bottom = mean_timings['time_lin'])
+plt.bar(ind, mean_timings['time_qp'], 0.35, bottom = mean_timings['time_qp_xcond'])
+plt.title('Timing per iteration')
+plt.legend(list(mean_timings.keys()))
+plt.xticks(ind, tuple(list(plot_log[0]['log'].keys())))
+plt.grid(True)
+
+import ipdb; ipdb.set_trace()
+from tabulate import tabulate
+print(tabulate([
+    ['time_lin']+mean_timings['time_lin'],
+    ['time_qp']+mean_timings['time_qp'],
+    ['time_qp_xcond']+mean_timings['time_qp_xcond']],
+    headers=[' ']+list(ctrls.keys())))
+
 plt.show()

@@ -179,7 +179,7 @@ if ACADOS_CODEGENERATE:
 
 # initialize and set-up open-loop simulation
 alpha = np.linspace(-1.0, 1.0, alpha_steps+1) # deviation sweep grid
-dz = 4 # max. deviation
+dz = 8 # max. deviation
 x0 = sol['wsol']['x',0]
 tgrid = [1/user_input['p']*i for i in range(Nmpc)]
 tgridx = tgrid + [tgrid[-1]+1/user_input['p']]

@@ -172,7 +172,7 @@ if ACADOS_CODEGENERATE:
 
         else:
             opts['hessian_approx'] = 'GAUSS_NEWTON'
-            opts['qp_solver'] = 'PARTIAL_CONDENSING_HPIPM'
+            opts['qp_solver'] = 'PARTIAL_CONDENSING_HPIPM' # faster than full condensing
 
         _, _ = ctrls[ctrl_key].generate(alg, opts = opts, name = 'awe_'+ctrl_key)
         ctrls_acados[ctrl_key+'_ACADOS'] = ctrls[ctrl_key]
@@ -180,7 +180,6 @@ if ACADOS_CODEGENERATE:
 # initialize and set-up open-loop simulation
 alpha = np.linspace(-1.0, 1.0, alpha_steps+1) # deviation sweep grid
 dz = 8 # max. deviation
-alpha = [0.1]
 x0 = sol['wsol']['x',0]
 tgrid = [1/user_input['p']*i for i in range(Nmpc)]
 tgridx = tgrid + [tgrid[-1]+1/user_input['p']]
@@ -364,7 +363,7 @@ if ACADOS_CODEGENERATE:
     plt.ylabel('t [s]')
 
     from statistics import mean
-    mean_timings = {'time_lin': [], 'time_qp_xcond': [], 'time_qp': []}
+    mean_timings = {'time_lin': [], 'time_qp_xcond': [], 'time_qp': [],'time_tot': []}
     for name in ctrls_list:
         if name[-6:] == 'ACADOS':
             plot_log = log_acados
@@ -374,6 +373,7 @@ if ACADOS_CODEGENERATE:
                 )
     from tabulate import tabulate
     print(tabulate([
+        ['time_tot']+mean_timings['time_tot'],
         ['time_lin']+mean_timings['time_lin'],
         ['time_qp']+mean_timings['time_qp'],
         ['time_qp_xcond']+mean_timings['time_qp_xcond']],

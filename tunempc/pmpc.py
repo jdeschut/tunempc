@@ -530,9 +530,17 @@ class Pmpc(object):
         ny_e = nx
 
         if 'integrator_type' in opts and opts['integrator_type'] == 'GNSF':
-            # from acados_template import acados_dae_model_json_dump
-            # acados_dae_model_json_dump(model)
-            # status = os.system('octave detect_gnsf_from_json.m')
+            from acados_template import acados_dae_model_json_dump
+            import os
+            acados_dae_model_json_dump(model)
+            # Set up Octave to be able to run the following:
+            ## if using a virtual python env, the following lines can be added to the env/bin/activate script:
+            # export OCTAVE_PATH=$OCTAVE_PATH:$ACADOS_INSTALL_DIR/external/casadi-octave
+            # export OCTAVE_PATH=$OCTAVE_PATH:$ACADOS_INSTALL_DIR/interfaces/acados_matlab_octave/
+            # export OCTAVE_PATH=$OCTAVE_PATH:$ACADOS_INSTALL_DIR/interfaces/acados_matlab_octave/acados_template_mex/
+            # echo
+            # echo "OCTAVE_PATH=$OCTAVE_PATH"
+            status = os.system('octave convert.m')
             # load gnsf from json
             with open(model.name + '_gnsf_functions.json', 'r') as f:
                 import json

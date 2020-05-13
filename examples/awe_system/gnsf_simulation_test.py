@@ -68,7 +68,8 @@ x0 = np.squeeze(sol['wsol']['x',0].full())
 x_sim_gnsf = []
 for i in range(user_input['p']):
     GNSF_integrator.set('x', x0)
-    GNSF_integrator.set('u', np.squeeze(sol['wsol']['u',i].full()))
+    u0 = ct.vertcat(sol['wsol']['u',i], np.zeros((ns,1)))
+    GNSF_integrator.set('u', np.squeeze(u0.full()))
     gnsf_status = GNSF_integrator.solve()
     x0 = GNSF_integrator.get('x')
     x_sim_gnsf.append(x0)
@@ -86,7 +87,8 @@ x0 = np.squeeze(sol['wsol']['x',0].full())
 x_sim_irk = []
 for i in range(user_input['p']):
     IRK_integrator.set('x', x0)
-    IRK_integrator.set('u', np.squeeze(sol['wsol']['u',i].full()))
+    u0 = ct.vertcat(sol['wsol']['u',i], np.zeros((ns,1)))
+    IRK_integrator.set('u', np.squeeze(u0.full()))
     gnsf_status = IRK_integrator.solve()
     x0 = IRK_integrator.get('x')
     x_sim_irk.append(x0)

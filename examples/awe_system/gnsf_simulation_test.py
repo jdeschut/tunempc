@@ -52,7 +52,7 @@ alg = user_input['dyn']
 # solver options
 opts = {}
 opts['integrator_type'] = 'GNSF'
-opts['sim_method_num_steps'] = 50
+opts['sim_method_num_steps'] = 1
 opts['tf'] = Nmpc*user_input['ts']
 
 _, GNSF_integrator = TUNEMPC.generate(
@@ -61,6 +61,8 @@ _, GNSF_integrator = TUNEMPC.generate(
 
 # set up simulation
 x0 = np.squeeze(sol['wsol']['x',0].full())
+
+# user_input['p'] = 3
 
 # GNSF step
 x_sim_gnsf = []
@@ -76,6 +78,9 @@ _, IRK_integrator = TUNEMPC.generate(
     alg, opts = opts, name = 'irk'
     )
 
+print("x_sim_gnsf", x_sim_gnsf)
+
+
 # IRK step
 x0 = np.squeeze(sol['wsol']['x',0].full())
 x_sim_irk = []
@@ -86,11 +91,17 @@ for i in range(user_input['p']):
     x0 = IRK_integrator.get('x')
     x_sim_irk.append(x0)
 
+print("x_sim_irk", x_sim_irk)
+
 
 # plot x-position
 plt.figure()
-plt.plot([x_sim_gnsf[k][0] for k in range(user_input['p'])])
-plt.plot([x_sim_irk[k][0] for k in range(user_input['p'])])
+plt.plot([x_sim_gnsf[k][0] for k in range(user_input['p'])], linestyle = '-.')
+plt.plot([x_sim_irk[k][0] for k in range(user_input['p'])], linestyle = 'dotted')
 plt.plot([sol['wsol']['x',0][0] for k in range(user_input['p'])], linestyle = '--', color = 'black')
+plt.legend(('GNSF', 'IRK', 'wsol'))
 plt.show()
-import ipdb; ipdb.set_trace()
+
+for i in range(len(x_sim_gnsf)):
+    err_i = np.max(abs(x_sim_irk[i] - x_sim_gnsf[i]))
+    print("error_x irk vs gnsf after", i, "sim steps", err_i)

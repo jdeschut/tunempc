@@ -98,7 +98,7 @@ print("x_sim_irk", x_sim_irk)
 plt.figure()
 plt.plot([x_sim_gnsf[k][0] for k in range(user_input['p'])], linestyle = '-.')
 plt.plot([x_sim_irk[k][0] for k in range(user_input['p'])], linestyle = 'dotted')
-plt.plot([sol['wsol']['x',0][0] for k in range(user_input['p'])], linestyle = '--', color = 'black')
+plt.plot([sol['wsol']['x',k][0] for k in range(user_input['p'])], linestyle = '--', color = 'black')
 plt.legend(('GNSF', 'IRK', 'wsol'))
 plt.show()
 

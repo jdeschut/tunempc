@@ -29,7 +29,7 @@ nu = sol['sys']['vars']['u'].shape[0]
 ns = sol['sys']['vars']['us'].shape[0]
 
 # set-up open-loop scenario
-Nmpc  = 20
+Nmpc = 20
 
 # prepare tracking cost and initialization
 tracking_cost = mtools.tracking_cost(nx+nu+ns)
@@ -63,16 +63,25 @@ _, GNSF_integrator = TUNEMPC.generate(
 x0 = np.squeeze(sol['wsol']['x',0].full())
 
 # user_input['p'] = 3
-
 # GNSF step
 x_sim_gnsf = []
+S_forw_gnsf = []
+S_adj_gnsf = []
+
 for i in range(user_input['p']):
     GNSF_integrator.set('x', x0)
     u0 = ct.vertcat(sol['wsol']['u',i], np.zeros((ns,1)))
     GNSF_integrator.set('u', np.squeeze(u0.full()))
     gnsf_status = GNSF_integrator.solve()
+
     x0 = GNSF_integrator.get('x')
+    S_forw = GNSF_integrator.get('S_forw')
+    S_adj = GNSF_integrator.get('S_adj')
+
+    S_forw_gnsf.append(S_forw)
+    S_adj_gnsf.append(S_adj)
     x_sim_gnsf.append(x0)
+
 
 opts['integrator_type'] = 'IRK'
 _, IRK_integrator = TUNEMPC.generate(
@@ -84,13 +93,22 @@ print("x_sim_gnsf", x_sim_gnsf)
 
 # IRK step
 x0 = np.squeeze(sol['wsol']['x',0].full())
+
 x_sim_irk = []
+S_forw_irk = []
+S_adj_irk = []
 for i in range(user_input['p']):
     IRK_integrator.set('x', x0)
     u0 = ct.vertcat(sol['wsol']['u',i], np.zeros((ns,1)))
+
     IRK_integrator.set('u', np.squeeze(u0.full()))
-    gnsf_status = IRK_integrator.solve()
+    irk_status = IRK_integrator.solve()
     x0 = IRK_integrator.get('x')
+    S_forw = IRK_integrator.get('S_forw')
+    S_adj = IRK_integrator.get('S_adj')
+
+    S_forw_irk.append(S_forw)
+    S_adj_irk.append(S_adj)
     x_sim_irk.append(x0)
 
 print("x_sim_irk", x_sim_irk)
@@ -107,3 +125,15 @@ plt.show()
 for i in range(len(x_sim_gnsf)):
     err_i = np.max(abs(x_sim_irk[i] - x_sim_gnsf[i]))
     print("error_x irk vs gnsf after", i, "sim steps", err_i)
+
+for i in range(len(S_forw_gnsf)):
+    norm_i = np.max(abs(S_forw_irk[i]))
+    err_i = np.max(abs(S_forw_irk[i] - S_forw_gnsf[i]))
+    print("error_S_forw irk vs gnsf after", i, "sim steps", err_i/norm_i)
+
+# for i in range(len(S_adj_gnsf)):
+#     norm_i = np.max(abs(S_adj_irk[i]))
+#     err_i = np.max(abs(S_adj_irk[i] - S_adj_gnsf[i]))
+#     print("error_S_adj irk vs gnsf after", i, "sim steps", err_i/norm_i)
+
+import ipdb; ipdb.set_trace()

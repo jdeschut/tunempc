@@ -64,7 +64,7 @@ x0 = np.squeeze(sol['wsol']['x',0].full())
 
 # user_input['p'] = 3
 # GNSF step
-x_sim_gnsf = []
+x_sim_gnsf = [x0]
 S_forw_gnsf = []
 S_adj_gnsf = []
 
@@ -94,7 +94,7 @@ print("x_sim_gnsf", x_sim_gnsf)
 # IRK step
 x0 = np.squeeze(sol['wsol']['x',0].full())
 
-x_sim_irk = []
+x_sim_irk = [x0]
 S_forw_irk = []
 S_adj_irk = []
 for i in range(user_input['p']):

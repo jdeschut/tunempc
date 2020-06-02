@@ -444,6 +444,7 @@ class Pmpc(object):
             if 'us' in self.__vars:
                 self.__w_sol_acados['us',i] = self.__acados_ocp_solver.get(i,"u")[self.__nu:]
         self.__w_sol_acados['x',self.__N] = self.__acados_ocp_solver.get(self.__N,"x")
+        self.__extract_acados_solver_stats()
 
         # feedback policy
         u0 = self.__acados_ocp_solver.get(0, "u")[:self.__nu]
@@ -520,7 +521,7 @@ class Pmpc(object):
             model.con_h_expr = self.__gnl(model.x, model.u[:self.__nu], model.u[self.__nu:])
 
         if self.__type == 'economic':
-            model.cost_expr_ext_cost = self.__cost(model.x, model.u[:self.__nu])
+            model.cost_expr_ext_cost = self.__cost(model.x, model.u[:self.__nu])/opts['tf']*self.__N
 
 
         # create acados ocp
@@ -540,7 +541,9 @@ class Pmpc(object):
             # export OCTAVE_PATH=$OCTAVE_PATH:$ACADOS_INSTALL_DIR/interfaces/acados_matlab_octave/acados_template_mex/
             # echo
             # echo "OCTAVE_PATH=$OCTAVE_PATH"
-            status = os.system('octave convert.m')
+            status = os.system(
+                "octave --eval \"convert({})\"".format("\'"+model.name+"_acados_dae.json\'")
+            )
             # load gnsf from json
             with open(model.name + '_gnsf_functions.json', 'r') as f:
                 import json
@@ -717,6 +720,17 @@ class Pmpc(object):
             'nAS': []
         }
 
+        self.__log_acados = {
+            'time_tot': [],
+            'time_lin': [],
+            'time_sim': [],
+            'time_qp': [],
+            'sqp_iter': [],
+            'time_reg': [],
+            'time_qp_xcond': [],
+            'time_qp_solver_call': [],
+        }
+
         return None
 
     def __extract_solver_stats(self):
@@ -734,6 +748,13 @@ class Pmpc(object):
         self.__log['nAC'].append(nAC)
         self.__log['idx_AC'].append(nAC)
         self.__log['nAS'].append(info['nAS'])
+
+        return None
+
+    def __extract_acados_solver_stats(self):
+
+        for key in list(self.__log_acados.keys()):
+            self.__log_acados[key].append(self.__acados_ocp_solver.get_stats(key))
 
         return None
 
@@ -858,26 +879,29 @@ class Pmpc(object):
             xref = np.squeeze(self.__ref[idx][:self.__nx], axis = 1)
             uref = np.squeeze(self.__ref[idx][self.__nx: self.__nx + self.__nu + self.__ns], axis = 1)
 
-            # construct output reference with gradient term
-            yref = np.squeeze(
-                ca.vertcat(xref,uref).full() - \
-                ct.mtimes(
-                    np.linalg.inv(self.__Href[idx][0]), # inverse of weighting matrix
-                    self.__qref[idx][0].T).full(), # gradient term
-                axis = 1
-                )
-            self.__acados_ocp_solver.set(i, 'yref', yref)
+            if self.__type == 'tracking':
 
-            # update tuning matrix
-            self.__acados_ocp_solver.cost_set(i, 'W', self.__Href[idx][0])
+                # construct output reference with gradient term
+                yref = np.squeeze(
+                    ca.vertcat(xref,uref).full() - \
+                    ct.mtimes(
+                        np.linalg.inv(self.__Href[idx][0]), # inverse of weighting matrix
+                        self.__qref[idx][0].T).full(), # gradient term
+                    axis = 1
+                    )
+                self.__acados_ocp_solver.set(i, 'yref', yref)
+
+                # update tuning matrix
+                self.__acados_ocp_solver.cost_set(i, 'W', self.__Href[idx][0])
 
             # update constraint bounds
-            C = self.__S['C'][idx][:,:self.__nx]
-            D = self.__S['C'][idx][:,self.__nx:]
-            lg = -self.__S['e'][idx] + ct.mtimes(C,xref).full() + ct.mtimes(D,uref).full()
-            ug = 1e8 - self.__S['e'][idx] + ct.mtimes(C,xref).full() + ct.mtimes(D,uref).full()
-            self.__acados_ocp_solver.constraints_set(i, 'lg', np.squeeze(lg, axis = 1))
-            self.__acados_ocp_solver.constraints_set(i, 'ug', np.squeeze(ug, axis = 1))
+            if self.__h is not None:
+                C = self.__S['C'][idx][:,:self.__nx]
+                D = self.__S['C'][idx][:,self.__nx:]
+                lg = -self.__S['e'][idx] + ct.mtimes(C,xref).full() + ct.mtimes(D,uref).full()
+                ug = 1e8 - self.__S['e'][idx] + ct.mtimes(C,xref).full() + ct.mtimes(D,uref).full()
+                self.__acados_ocp_solver.constraints_set(i, 'lg', np.squeeze(lg, axis = 1))
+                self.__acados_ocp_solver.constraints_set(i, 'ug', np.squeeze(ug, axis = 1))
 
         # update terminal constraint
         idx = (self.__index_acados+self.__N)%self.__Nref
@@ -935,8 +959,9 @@ class Pmpc(object):
                 lam_h.append(self.__scost) # us
                 t.append(np.zeros((self.__nsc,))) # slg > 0
                 t.append(np.zeros((self.__nsc,))) # sug > 0
-            self.__acados_ocp_solver.set(i, "lam", np.squeeze(ct.vertcat(*lam_h).full()))
-            self.__acados_ocp_solver.set(i, "t", np.squeeze(ct.vertcat(*t).full()))
+            if len(lam_h) != 0:
+                self.__acados_ocp_solver.set(i, "lam", np.squeeze(ct.vertcat(*lam_h).full()))
+                self.__acados_ocp_solver.set(i, "t", np.squeeze(ct.vertcat(*t).full()))
 
         # terminal state
         idx = (self.__index_acados+self.__N)%self.__Nref
@@ -964,6 +989,10 @@ class Pmpc(object):
     @property
     def log(self):
         return self.__log
+
+    @property
+    def log_acados(self):
+        return self.__log_acados
 
     @property
     def index(self):

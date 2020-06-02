@@ -82,15 +82,14 @@ tgridx = [Ts*k for k in range(N+1)]
 ctrls = {}
 
 # economic mpc controller
-opts = {'ipopt_presolve': False, 'slack_flag': 'active'}
-ctrls['economic'] = tuner.create_mpc('economic',N, opts=opts)
+ctrls['economic'] = tuner.create_mpc('economic',N)
 
 # normal tracking mpc controller
 tuningTn = {'H': [np.diag([0.2, 1.0, 0.5, 0.2, 0.5, 0.5])], 'q': S['q']}
-ctrls['tracking'] = tuner.create_mpc('tracking', N, opts=opts, tuning=tuningTn)
+ctrls['tracking'] = tuner.create_mpc('tracking', N, tuning=tuningTn)
 
 # tuned tracking mpc controller
-ctrls['tuned'] = tuner.create_mpc('tuned', N, opts=opts)
+ctrls['tuned'] = tuner.create_mpc('tuned', N)
 
 ACADOS_CODEGENERATE = False
 if ACADOS_CODEGENERATE:
@@ -100,8 +99,6 @@ if ACADOS_CODEGENERATE:
 
     # solver options
     opts = {}
-    opts['qp_solver'] = 'FULL_CONDENSING_QPOASES' # PARTIAL_CONDENSING_HPIPM
-    opts['hessian_approx'] = 'GAUSS_NEWTON'
     opts['integrator_type'] = 'ERK'
     opts['nlp_solver_type'] = 'SQP' # SQP_RTI
     opts['qp_solver_cond_N'] = 1 # ???
@@ -109,13 +106,19 @@ if ACADOS_CODEGENERATE:
     opts['sim_method_num_steps'] = data['num_steps']
     opts['tf'] = N*data['ts']
     opts['nlp_solver_max_iter'] = 300
-    opts['nlp_solver_step_length'] = 1.0
 
-    acados_ocp_solver, acados_integrator = ctrls['tuned'].generate(
-        ode, opts = opts, name = 'unicycle'
-        )
+    ctrls_acados = {}
+    for ctrl_key in list(ctrls.keys()):
+        if ctrl_key == 'economic':
+            opts['hessian_approx'] = 'EXACT'
+            opts['nlp_solver_step_length'] = 0.7
+            opts['qp_solver'] = 'PARTIAL_CONDENSING_HPIPM'
+        else:
+            opts['hessian_approx'] = 'GAUSS_NEWTON'
+            opts['qp_solver'] = 'FULL_CONDENSING_HPIPM'
 
-    ctrls_acados = {'tuned_acados': ctrls['tuned']}
+        _, _ = ctrls[ctrl_key].generate(ode, opts = opts, name = ctrl_key+'_cstr')
+        ctrls_acados[ctrl_key+'_acados'] = ctrls[ctrl_key]
 
 # check equivalence
 alpha = np.linspace(-0.1, 1.0, 10)

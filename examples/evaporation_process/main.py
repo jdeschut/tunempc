@@ -248,14 +248,13 @@ if ACADOS_CODEGENERATE:
                 [log[j]['u'][name][0][i] - log[j]['u']['economic'][0][i] \
                 for j in range(len(alpha))]
             )
-            if name == 'tuned':
-                plt.plot(
-                    [a*dP2 for a in alpha],
-                    [log_acados[j]['u'][name][0][i]  - log[j]['u']['economic'][0][i] \
-                        for j in range(len(alpha))],
-                    linestyle = '--')
-                if i == 0:
-                    legend_list += ['tuned_acados']
+            plt.plot(
+                [a*dP2 for a in alpha],
+                [log_acados[j]['u'][name+'_acados'][0][i]  - log[j]['u']['economic'][0][i] \
+                    for j in range(len(alpha))],
+                linestyle = '--')
+            if i == 0:
+                legend_list += [name+'_acados']
             plt.legend(legend_list)
             plt.xlabel('dP2')
             plt.ylabel('u0 - u0_economic: {}'.format(ctrl_name[i]))

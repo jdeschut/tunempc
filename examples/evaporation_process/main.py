@@ -175,7 +175,7 @@ ctrls['tracking'] = tuner.create_mpc('tracking',N = N, tuning = tuningTn)
 ctrls['tuned'] = tuner.create_mpc('tuned',N = N)
 
 # check feedback policy equivalence
-alpha = np.linspace(0.0, 1.0, 10) # sweep factor
+alpha = np.linspace(0.0, 1.0, 1) # sweep factor
 dP2 = 1.0 # initial state perturbation
 log = clt.check_equivalence(ctrls, objective(x,u,data), sys['h'], wsol['x',0], ca.vertcat(0.0, dP2), alpha)
 
@@ -195,7 +195,7 @@ for name in list(ctrls.keys()):
         plt.grid(True)
 
 # generate embedded solver
-ACADOS_CODEGENERATE = False
+ACADOS_CODEGENERATE = True
 if ACADOS_CODEGENERATE:
 
     # get system ode
@@ -203,7 +203,7 @@ if ACADOS_CODEGENERATE:
 
     # solver options
     opts = {}
-    opts['integrator_type'] = 'IRK'
+    opts['integrator_type'] = 'GNSF'
     opts['nlp_solver_type'] = 'SQP' # SQP_RTI
     opts['qp_solver_cond_N'] = 1 # ???
     opts['print_level'] = 0

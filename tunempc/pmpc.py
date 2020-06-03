@@ -486,7 +486,7 @@ class Pmpc(object):
 
             # xdot = f(x, u)
             if 'integrator_type' in opts:
-                if opts['integrator_type'] == 'IRK':
+                if opts['integrator_type'] in ['IRK','GNSF']:
                     xdot = ca.MX.sym('xdot', nx)
                     model.xdot = xdot
                     model.f_impl_expr = xdot - dae(model.x, model.u[:self.__nu])

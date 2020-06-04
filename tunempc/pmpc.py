@@ -29,6 +29,7 @@ import casadi.tools as ct
 import casadi as ca
 import numpy as np
 import itertools
+import copy
 import collections
 import tunempc.sqp_method as sqp_method
 from tunempc.logger import Logger
@@ -909,6 +910,13 @@ class Pmpc(object):
                 D = self.__S['C'][idx][:,self.__nx:]
                 lg = -self.__S['e'][idx] + ct.mtimes(C,xref).full() + ct.mtimes(D,uref).full()
                 ug = 1e8 - self.__S['e'][idx] + ct.mtimes(C,xref).full() + ct.mtimes(D,uref).full()
+
+                # remove constraints that depend on states only from first shooting node
+                if i == 0:
+                    for k in range(D.shape[0]):
+                        if np.sum(D[k,:]) == 0.0:
+                            lg[k] += -1e8
+                    # TODO: for nonlinear constraints!!!
                 self.__acados_ocp_solver.constraints_set(i, 'lg', np.squeeze(lg, axis = 1))
                 self.__acados_ocp_solver.constraints_set(i, 'ug', np.squeeze(ug, axis = 1))
 

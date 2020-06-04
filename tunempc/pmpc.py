@@ -952,17 +952,44 @@ class Pmpc(object):
             lam_h = []
             t = []
             if i == 0:
-                lam_h.append(ref_dual['init'])  # lbx_0
+                lam_x0 = copy.deepcopy(ref_dual['init'])
+                if 'h' in list(ref_dual.keys()):
+                    lam_lh0 = -ref_dual['h',0][:ref_dual['h',0].shape[0]-self.__nsc]
+                    t_lh0 = copy.deepcopy(self.__S['e'][idx%self.__Nref])
+                    if i == 0:
+                        # set unused constraints at i=0 to be inactive
+                        # TODO: for nonlinear constraints!!!
+                        C = self.__S['C'][idx][:,:self.__nx]
+                        D = self.__S['C'][idx][:,self.__nx:]
+                        for k in range(D.shape[0]):
+                            if np.sum(D[k,:]) == 0.0:
+                                lam_x0 += - ct.mtimes(lam_lh0[k], C[k,:])
+                                lam_lh0[k] = 0.0
+                                t_lh0[k] += 1e8
+                lam_lx0 = - copy.deepcopy(lam_x0)
+                for k in range(self.__nx):
+                    if lam_lx0[k] < 0.0:
+                        lam_lx0[k] = 0.0 # assign multiplier to upper bound
+                lam_h.append(lam_lx0)  # lbx_0
                 t.append(np.zeros((self.__nx,)))
             if 'h' in list(ref_dual.keys()):
-                lam_lh = -ref_dual['h',0][:ref_dual['h',0].shape[0]-self.__nsc]
+                if i == 0:
+                    lam_lh = lam_lh0
+                    t_lh = t_lh0
+                else:
+                    lam_lh = -ref_dual['h',0][:ref_dual['h',0].shape[0]-self.__nsc]
+                    t_lh = copy.deepcopy(self.__S['e'][idx%self.__Nref])
                 lam_h.append(lam_lh) # lg
-                t.append(self.__S['e'][idx%self.__Nref])
+                t.append(t_lh)
             if 'g' in list(ref_dual.keys()):
                 lam_h.append(ref_dual['g',0]) # lh
                 t.append(np.zeros((ref_dual['g',0].shape[0],)))
             if i == 0:
-                lam_h.append(np.zeros((self.__nx,))) # ubx_0
+                lam_ux0 = copy.deepcopy(lam_x0)
+                for k in range(self.__nx):
+                    if lam_ux0[k] < 0.0:
+                        lam_ux0[k] = 0.0 # assign multiplier to lower bound
+                lam_h.append(lam_ux0)  # ubx_0
                 t.append(np.zeros((self.__nx,)))
             if 'h' in list(ref_dual.keys()):
                 lam_h.append(np.zeros((ref_dual['h',0].shape[0]- self.__nsc,))) # ug
@@ -986,7 +1013,13 @@ class Pmpc(object):
         self.__acados_ocp_solver.set(self.__N, "x", xref)
 
         # terminal multipliers
-        lam_term = np.squeeze(ct.vertcat(ref_dual['term'],np.zeros((ref_dual['term'].shape[0],))).full())
+        lam_lterm = -ref_dual['term']
+        lam_uterm = np.zeros((ref_dual['term'].shape[0],))
+        for k in range(lam_lterm.shape[0]):
+            if lam_lterm[k] < 0.0:
+                lam_uterm[k] = -lam_lterm[k]
+                lam_lterm[k] = 0.0
+        lam_term = np.squeeze(ct.vertcat(lam_lterm,lam_uterm).full())
         self.__acados_ocp_solver.set(self.__N, "lam", lam_term)
 
         return None

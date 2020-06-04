@@ -175,7 +175,7 @@ ctrls['tracking'] = tuner.create_mpc('tracking',N = N, tuning = tuningTn)
 ctrls['tuned'] = tuner.create_mpc('tuned',N = N)
 
 # check feedback policy equivalence
-alpha = np.linspace(0.0, 1.0, 10) # sweep factor
+alpha = np.linspace(0.0, 1.0, 1) # sweep factor
 dP2 = 1.0 # initial state perturbation
 log = clt.check_equivalence(ctrls, objective(x,u,data), sys['h'], wsol['x',0], ca.vertcat(0.0, dP2), alpha)
 
@@ -205,7 +205,7 @@ if ACADOS_CODEGENERATE:
     opts = {}
     opts['integrator_type'] = 'IRK'
     opts['nlp_solver_type'] = 'SQP' # SQP_RTI
-    opts['qp_solver_cond_N'] = 1 # ???
+    opts['qp_solver_cond_N'] = 1
     opts['print_level'] = 0
     opts['sim_method_num_steps'] = 20
     opts['tf'] = N # h = tf/N = 1 [s]
@@ -216,7 +216,6 @@ if ACADOS_CODEGENERATE:
     for ctrl_key in list(ctrls.keys()):
         if ctrl_key == 'economic':
             opts['hessian_approx'] = 'EXACT'
-            opts['nlp_solver_step_length'] = 0.9
             opts['qp_solver'] = 'PARTIAL_CONDENSING_HPIPM'
         else:
             opts['hessian_approx'] = 'GAUSS_NEWTON'

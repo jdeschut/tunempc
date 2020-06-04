@@ -175,7 +175,7 @@ ctrls['tracking'] = tuner.create_mpc('tracking',N = N, tuning = tuningTn)
 ctrls['tuned'] = tuner.create_mpc('tuned',N = N)
 
 # check feedback policy equivalence
-alpha = np.linspace(0.0, 1.0, 1) # sweep factor
+alpha = np.linspace(0.0, 1.0, 10) # sweep factor
 dP2 = 1.0 # initial state perturbation
 log = clt.check_equivalence(ctrls, objective(x,u,data), sys['h'], wsol['x',0], ca.vertcat(0.0, dP2), alpha)
 

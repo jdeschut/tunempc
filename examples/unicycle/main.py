@@ -153,7 +153,7 @@ if ACADOS_CODEGENERATE:
 
     # solver options
     opts = {}
-    opts['qp_solver'] = 'FULL_CONDENSING_QPOASES' # PARTIAL_CONDENSING_HPIPM
+    opts['qp_solver'] = 'PARTIAL_CONDENSING_HPIPM' # PARTIAL_CONDENSING_HPIPM
     opts['hessian_approx'] = 'GAUSS_NEWTON'
     opts['integrator_type'] = 'ERK'
     opts['nlp_solver_type'] = 'SQP' # SQP_RTI

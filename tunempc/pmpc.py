@@ -975,6 +975,9 @@ class Pmpc(object):
 
     def __set_acados_initial_guess(self):
 
+        # dual reference solution
+        ref_dual = self.__ref_du_struct[self.__index_acados%self.__Nref]
+
         for i in range(self.__N):
 
             # periodic index
@@ -989,7 +992,6 @@ class Pmpc(object):
             self.__acados_ocp_solver.set(i, "u", uref)
 
             # set dual initial guess
-            ref_dual = self.__ref_du_struct[idx]
             self.__acados_ocp_solver.set(i, "pi", np.squeeze(ref_dual['dyn',i].full()))
 
             # the inequalities are internally organized in the following order:
@@ -999,7 +1001,7 @@ class Pmpc(object):
             if i == 0:
                 lam_x0 = copy.deepcopy(ref_dual['init'])
                 if 'h' in list(ref_dual.keys()):
-                    lam_lh0 = -ref_dual['h',0][:ref_dual['h',0].shape[0]-self.__nsc]
+                    lam_lh0 = -ref_dual['h',i][:ref_dual['h',i].shape[0]-self.__nsc]
                     t_lh0 = copy.deepcopy(self.__S['e'][idx%self.__Nref])
                     if i == 0:
                         # set unused constraints at i=0 to be inactive
@@ -1022,13 +1024,13 @@ class Pmpc(object):
                     lam_lh = lam_lh0
                     t_lh = t_lh0
                 else:
-                    lam_lh = -ref_dual['h',0][:ref_dual['h',0].shape[0]-self.__nsc]
+                    lam_lh = -ref_dual['h',i][:ref_dual['h',i].shape[0]-self.__nsc]
                     t_lh = copy.deepcopy(self.__S['e'][idx%self.__Nref])
                 lam_h.append(lam_lh) # lg
                 t.append(t_lh)
             if 'g' in list(ref_dual.keys()):
-                lam_h.append(ref_dual['g',0]) # lh
-                t.append(np.zeros((ref_dual['g',0].shape[0],)))
+                lam_h.append(ref_dual['g',i]) # lh
+                t.append(np.zeros((ref_dual['g',i].shape[0],)))
             if i == 0:
                 lam_ux0 = copy.deepcopy(lam_x0)
                 for k in range(self.__nx):
@@ -1037,11 +1039,11 @@ class Pmpc(object):
                 lam_h.append(lam_ux0)  # ubx_0
                 t.append(np.zeros((self.__nx,)))
             if 'h' in list(ref_dual.keys()):
-                lam_h.append(np.zeros((ref_dual['h',0].shape[0]- self.__nsc,))) # ug
-                t.append(1e8*np.ones((ref_dual['h',0].shape[0]- self.__nsc,1))-self.__S['e'][idx])
+                lam_h.append(np.zeros((ref_dual['h',i].shape[0]- self.__nsc,))) # ug
+                t.append(1e8*np.ones((ref_dual['h',i].shape[0]- self.__nsc,1))-self.__S['e'][idx])
             if 'g' in list(ref_dual.keys()):
-                lam_h.append(np.zeros((ref_dual['g',0].shape[0],))) # uh
-                t.append(np.zeros((ref_dual['g',0].shape[0],)))
+                lam_h.append(np.zeros((ref_dual['g',i].shape[0],))) # uh
+                t.append(np.zeros((ref_dual['g',i].shape[0],)))
             if self.__nsc > 0:
                 lam_sl = self.__scost - ct.mtimes(lam_lh.T,self.__Jsg).T
                 lam_h.append(lam_sl) # ls

@@ -36,7 +36,7 @@ from tunempc.logger import Logger
 
 class Pmpc(object):
 
-    def __init__(self, N, sys, cost, wref = None, tuning = None, lam_g_ref = None, options = {}):
+    def __init__(self, N, sys, cost, wref = None, tuning = None, lam_g_ref = None, sensitivities = None, options = {}):
         
         """ Constructor
         """
@@ -111,6 +111,12 @@ class Pmpc(object):
 
         # periodicity operator
         self.__p_operator = self.__options['p_operator']
+        self.__jac_p_operator = ca.Function(
+            'jac_p',
+            [sys['vars']['x']],
+            [ca.jacobian(self.__p_operator(sys['vars']['x']),sys['vars']['x'])]
+        )
+        self.__S = sensitivities
 
         # construct MPC solver
         self.__construct_solver()
@@ -235,13 +241,13 @@ class Pmpc(object):
             constraints_entry += (ct.entry('h', shape = self.__h.size1_out(0), repeat = self.__N),)
 
         # terminal constraint
-        nx_term = self.__p_operator.size1_out(0)
+        self.__nx_term = self.__p_operator.size1_out(0)
 
         # create general constraints structure
         g_struct = ct.struct_symMX([
             ct.entry('init', shape = (self.__nx,1)),
             constraints_entry,
-            ct.entry('term', shape = (nx_term,1))
+            ct.entry('term', shape = (self.__nx_term,1))
         ])
 
         # create symbolic constraint expressions
@@ -691,6 +697,45 @@ class Pmpc(object):
 
                     lamgk['h',j] = ct.vertcat(*lam_h)
             lamgk['term'] = self.__p_operator(lam_g_ref['dyn',(k+self.__N-1)%self.__Nref])
+
+            # adjust dual solution of terminal constraint is projected
+            if self.__nx_term != self.__nx:
+
+                # find new terminal multiplier
+                A_m = []
+                b_m = []
+                A_factor = ca.DM.eye(self.__nx)
+                for j in range(self.__N):
+                    A_m.append(ct.mtimes(
+                        ct.mtimes(self.__S['B'][(self.__N-j-1)%self.__Nref].T, A_factor),
+                        self.__jac_p_operator(ca.DM.ones(self.__nx,1)).T
+                        )
+                    )
+                    b_m.append(ct.mtimes(
+                        ct.mtimes(self.__S['B'][(self.__N-j-1)%self.__Nref].T, A_factor),
+                        lam_g_ref['dyn',(k+self.__N-1)%self.__Nref]
+                        )
+                    )
+                    A_factor = ct.mtimes(self.__S['A'][(self.__N-j-1)%self.__Nref].T, A_factor)
+                A_m = ct.vertcat(*A_m)
+                b_m = ct.vertcat(*b_m)
+                lamgk['term'] = ca.solve(A_m[:self.__nx-1,:], b_m[:self.__nx-1,:])
+
+                # recursively update dynamics multipliers
+                delta_lam = - lam_g_ref['dyn',(k+self.__N-1)%self.__Nref] + ct.mtimes(
+                    self.__jac_p_operator(ca.DM.ones(self.__nx,1)).T,
+                    lamgk['term']
+                )
+                lamgk['dyn',self.__N-1] += delta_lam
+                for j in range(1,self.__N+1):
+                    delta_lam = ct.mtimes(
+                        self.__S['A'][(self.__N-j)%self.__Nref].T,
+                        delta_lam
+                    )
+                    if j < self.__N:
+                        lamgk['dyn', self.__N-1-j] += delta_lam
+                    else:
+                        lamgk['init'] += -delta_lam
 
             ref_pr.append(ct.vertcat(*refk))
             ref_du.append(lamgk.cat)

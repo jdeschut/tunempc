@@ -176,7 +176,8 @@ class Tuner(object):
             mpc_sys = self.__sys
 
         if mpc_type == 'economic':
-            mpc = pmpc.Pmpc(N = N, sys = mpc_sys, cost = self.__l, wref = self.__w_sol, lam_g_ref=self.__ocp.lam_g, options=opts)
+            mpc = pmpc.Pmpc(N = N, sys = mpc_sys, cost = self.__l, wref = self.__w_sol, 
+                lam_g_ref=self.__ocp.lam_g, sensitivities = self.__S, options=opts)
         else:
             cost = mtools.tracking_cost(self.__nx+self.__nu+self.__nus)
             lam_g0 = copy.deepcopy(self.__ocp.lam_g)
@@ -189,7 +190,8 @@ class Tuner(object):
                     raise ValueError('Tracking type MPC controller requires user-provided tuning!')
             elif mpc_type == 'tuned':
                 tuning = {'H': self.__S['Hc'], 'q': self.__S['q']}
-            mpc = pmpc.Pmpc(N = N, sys = mpc_sys, cost = cost, wref = self.__w_sol, tuning = tuning, lam_g_ref=lam_g0, options=opts)
+            mpc = pmpc.Pmpc(N = N, sys = mpc_sys, cost = cost, wref = self.__w_sol,
+                tuning = tuning, lam_g_ref=lam_g0, sensitivities = self.__S, options=opts)
         
         return mpc
 

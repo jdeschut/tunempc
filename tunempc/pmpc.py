@@ -719,7 +719,14 @@ class Pmpc(object):
                     A_factor = ct.mtimes(self.__S['A'][(self.__N-j-1)%self.__Nref].T, A_factor)
                 A_m = ct.vertcat(*A_m)
                 b_m = ct.vertcat(*b_m)
-                lamgk['term'] = ca.solve(A_m[:self.__nx-1,:], b_m[:self.__nx-1,:])
+                LI_indeces = [] # indeces of first full rank number linearly independent rows
+                R0 = 0
+                for i in range(A_m.shape[0]):
+                    R = np.linalg.matrix_rank(A_m[LI_indeces+[i],:])
+                    if R > R0:
+                        LI_indeces.append(i)
+                        R0 = R
+                lamgk['term'] = ca.solve(A_m[LI_indeces,:], b_m[LI_indeces,:])
 
                 # recursively update dynamics multipliers
                 delta_lam = - lam_g_ref['dyn',(k+self.__N-1)%self.__Nref] + ct.mtimes(

@@ -960,7 +960,6 @@ class Pmpc(object):
 
             # set custom hessians if applicable
             if self.__acados_ocp_solver.acados_ocp.solver_options.ext_cost_custom_hessian:
-                test = self.__custom_hessian[idx]
                 self.__acados_ocp_solver.cost_set(i, "cost_custom_hess", self.__custom_hessian[idx])
 
             # update constraint bounds

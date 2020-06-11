@@ -66,14 +66,19 @@ class Pmpc(object):
         # store path constraints
         if 'h' in sys:
             self.__h = sys['h']
+            h_lin = self.__h(*self.__vars.values())
+            self.__h_x_idx = [idx for idx in range(h_lin.shape[0]) if not True in ca.which_depends(h_lin[idx], ct.vertcat(*list(self.__vars.values())[1:]))]
         else:
             self.__h = None
 
         # store slacked nonlinear inequality constraints
         if 'g' in sys:
             self.__gnl = sys['g']
+            self.__detect_state_dependent_constraints()
+
         else:
             self.__gnl = None
+            self.__h_us_idx = [] # no nonlinear state-dependent constraints
 
         # store system sensitivities around steady state
         self.__S = sys['S']
@@ -285,6 +290,8 @@ class Pmpc(object):
         self.__ubg = g_struct(np.zeros(self.__g.shape))
         if self.__h is not None:
             self.__ubg['h',:] = np.inf
+            for i in self.__h_us_idx + self.__h_x_idx: # rm constraints the only depend on x at k = 0
+                self.__lbg['h',0,i] = -np.inf
 
         # nlp cost
         cost_map = self.__cost.map(self.__N)
@@ -966,9 +973,9 @@ class Pmpc(object):
                 # remove constraints that depend on states only from first shooting node
                 if i == 0:
                     for k in range(D.shape[0]):
-                        if np.sum(D[k,:]) == 0.0:
+                        if k in self.__h_us_idx + self.__h_x_idx:
                             lg[k] += -1e8
-                    # TODO: for nonlinear constraints!!!
+
                 self.__acados_ocp_solver.constraints_set(i, 'lg', np.squeeze(lg, axis = 1))
                 self.__acados_ocp_solver.constraints_set(i, 'ug', np.squeeze(ug, axis = 1))
 
@@ -1012,11 +1019,10 @@ class Pmpc(object):
                     t_lh0 = copy.deepcopy(self.__S['e'][idx%self.__Nref])
                     if i == 0:
                         # set unused constraints at i=0 to be inactive
-                        # TODO: for nonlinear constraints!!!
                         C = self.__S['C'][idx][:,:self.__nx]
                         D = self.__S['C'][idx][:,self.__nx:]
                         for k in range(D.shape[0]):
-                            if np.sum(D[k,:]) == 0.0:
+                            if k in self.__h_us_idx + self.__h_x_idx:
                                 lam_x0 += - ct.mtimes(lam_lh0[k], C[k,:])
                                 lam_lh0[k] = 0.0
                                 t_lh0[k] += 1e8
@@ -1036,7 +1042,13 @@ class Pmpc(object):
                 lam_h.append(lam_lh) # lg
                 t.append(t_lh)
             if 'g' in list(ref_dual.keys()):
-                lam_h.append(ref_dual['g',i]) # lh
+                lam_lg0 = -ref_dual['g',i]
+                lam_ug0 = np.zeros(lam_lg0.shape)
+                for k in range(lam_lg0.shape[0]):
+                    if lam_lg0[k] < 0.0:
+                        lam_ug0[k] = -lam_lg0[k]
+                        lam_lg0[k] = 0.0
+                lam_h.append(lam_lg0) # lh
                 t.append(np.zeros((ref_dual['g',i].shape[0],)))
             if i == 0:
                 lam_ux0 = copy.deepcopy(lam_x0)
@@ -1049,7 +1061,7 @@ class Pmpc(object):
                 lam_h.append(np.zeros((ref_dual['h',i].shape[0]- self.__nsc,))) # ug
                 t.append(1e8*np.ones((ref_dual['h',i].shape[0]- self.__nsc,1))-self.__S['e'][idx])
             if 'g' in list(ref_dual.keys()):
-                lam_h.append(np.zeros((ref_dual['g',i].shape[0],))) # uh
+                lam_h.append(lam_ug0) # uh
                 t.append(np.zeros((ref_dual['g',i].shape[0],)))
             if self.__nsc > 0:
                 lam_sl = self.__scost - ct.mtimes(lam_lh.T,self.__Jsg).T
@@ -1075,6 +1087,19 @@ class Pmpc(object):
                 lam_lterm[k] = 0.0
         lam_term = np.squeeze(ct.vertcat(lam_lterm,lam_uterm).full())
         self.__acados_ocp_solver.set(self.__N, "lam", lam_term)
+
+        return None
+
+    def __detect_state_dependent_constraints(self):
+        """ Detect which nonlinear equalities depend on states but not on controls.
+        """
+
+        g_nl = self.__gnl(self.__vars['x'], self.__vars['u'], self.__vars['us'])
+        self.__gnl_x_idx = []
+        for i in range(g_nl.shape[0]):
+            if not True in ca.which_depends(g_nl[i],self.__vars['u'],1):
+                self.__gnl_x_idx.append(i)
+        self.__h_us_idx = [idx+self.__h.size1_out(0)-self.__ns for idx in self.__gnl_x_idx]
 
         return None
 

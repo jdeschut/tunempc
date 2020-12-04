@@ -217,9 +217,12 @@ if ACADOS_CODEGENERATE:
         if ctrl_key == 'economic':
             opts['hessian_approx'] = 'EXACT'
             opts['qp_solver'] = 'PARTIAL_CONDENSING_HPIPM'
+            opts['ext_cost_custom_hessian'] = False
+            opts['custom_hessian'] = S['Hc']
         else:
             opts['hessian_approx'] = 'GAUSS_NEWTON'
-            opts['qp_solver'] = 'FULL_CONDENSING_HPIPM'
+            opts['qp_solver'] = 'FULL_CONDENSING_QPOASES'
+            opts['ext_cost_custom_hessian'] = False
 
         _, _ = ctrls[ctrl_key].generate(ode, opts = opts, name = ctrl_key+'_evaporation')
         ctrls_acados[ctrl_key+'_acados'] = ctrls[ctrl_key]

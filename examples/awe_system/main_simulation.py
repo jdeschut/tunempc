@@ -166,18 +166,24 @@ if ACADOS_SIM:
     opts['print_level'] = 1
     opts['sim_method_num_steps'] = 1
     opts['tf'] = Nmpc*user_input['ts']
-    opts['nlp_solver_max_iter'] = 10
+    opts['nlp_solver_max_iter'] = 50
     opts['nlp_solver_step_length'] = 0.9
+    opts['nlp_solver_tol_comp'] = 1e-5
+    opts['nlp_solver_tol_eq'] = 1e-5
+    opts['nlp_solver_tol_ineq'] = 1e-5
+    opts['nlp_solver_tol_stat'] = 1e-5
 
     ctrls_acados = {}
     for ctrl_key in list(ctrls.keys()):
         if ctrl_key == 'EMPC':
-            opts['hessian_approx'] = 'GAUSS_NEWTON' # EXACT not supported for nz > 0
+            opts['hessian_approx'] = 'GAUSS_NEWTON'
             opts['qp_solver'] = 'PARTIAL_CONDENSING_HPIPM'
-
+            opts['ext_cost_custom_hessian'] = False
+            opts['custom_hessian'] = sol['S']['Hc']
         else:
             opts['hessian_approx'] = 'GAUSS_NEWTON'
             opts['qp_solver'] = 'PARTIAL_CONDENSING_HPIPM' # faster than full condensing
+            opts['ext_cost_custom_hessian'] = False
 
         _, _ = ctrls[ctrl_key].generate(alg, opts = opts, name = 'awe_'+ctrl_key)
         ctrls_acados[ctrl_key+'_ACADOS'] = ctrls[ctrl_key]
@@ -255,7 +261,7 @@ if ACADOS_SIM:
 # plot feedback equivalence
 plt.figure(1)
 for name in ctrls_list:
-    if name != 'EMPC':
+    if name not in ['EMPC', 'EMPC_ACADOS']:
         if name[-6:] == 'ACADOS':
             plot_log = log_acados
             EMPC_key = 'EMPC_ACADOS'

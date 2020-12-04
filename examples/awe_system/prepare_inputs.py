@@ -108,6 +108,12 @@ constraints = ca.vertcat(
     -model['var_bounds_fun'](x_awe, u_awe,z)
 )
 
+# remove redundant constraints
+constraints_new = []
+for i in range(constraints.shape[0]):
+    if True in ca.which_depends(constraints[i],ca.vertcat(x,u)):
+        constraints_new.append(constraints[i])
+
 # create integrator
 integrator = awe_integrators.rk4root(
         'F',
@@ -119,7 +125,7 @@ qf = integrator(x0=x_awe, p=u_awe, z0 = 0.1)['qf']
 
 sys = {
     'f' : ca.Function('F',[x,u],[xf,qf],['x0','p'],['xf','qf']),
-    'h' : ca.Function('h', [x,u], [constraints])
+    'h' : ca.Function('h', [x,u], [ca.vertcat(*constraints_new)])
 }
 
 # cost function

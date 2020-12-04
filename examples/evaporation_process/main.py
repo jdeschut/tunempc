@@ -205,7 +205,7 @@ if ACADOS_CODEGENERATE:
     opts = {}
     opts['integrator_type'] = 'IRK'
     opts['nlp_solver_type'] = 'SQP' # SQP_RTI
-    opts['qp_solver_cond_N'] = 1 # ???
+    opts['qp_solver_cond_N'] = 1
     opts['print_level'] = 0
     opts['sim_method_num_steps'] = 20
     opts['tf'] = N # h = tf/N = 1 [s]
@@ -216,11 +216,13 @@ if ACADOS_CODEGENERATE:
     for ctrl_key in list(ctrls.keys()):
         if ctrl_key == 'economic':
             opts['hessian_approx'] = 'EXACT'
-            opts['nlp_solver_step_length'] = 0.9
             opts['qp_solver'] = 'PARTIAL_CONDENSING_HPIPM'
+            opts['ext_cost_custom_hessian'] = False
+            opts['custom_hessian'] = S['Hc']
         else:
             opts['hessian_approx'] = 'GAUSS_NEWTON'
-            opts['qp_solver'] = 'FULL_CONDENSING_HPIPM'
+            opts['qp_solver'] = 'FULL_CONDENSING_QPOASES'
+            opts['ext_cost_custom_hessian'] = False
 
         _, _ = ctrls[ctrl_key].generate(ode, opts = opts, name = ctrl_key+'_evaporation')
         ctrls_acados[ctrl_key+'_acados'] = ctrls[ctrl_key]
@@ -248,14 +250,13 @@ if ACADOS_CODEGENERATE:
                 [log[j]['u'][name][0][i] - log[j]['u']['economic'][0][i] \
                 for j in range(len(alpha))]
             )
-            if name == 'tuned':
-                plt.plot(
-                    [a*dP2 for a in alpha],
-                    [log_acados[j]['u'][name][0][i]  - log[j]['u']['economic'][0][i] \
-                        for j in range(len(alpha))],
-                    linestyle = '--')
-                if i == 0:
-                    legend_list += ['tuned_acados']
+            plt.plot(
+                [a*dP2 for a in alpha],
+                [log_acados[j]['u'][name+'_acados'][0][i]  - log[j]['u']['economic'][0][i] \
+                    for j in range(len(alpha))],
+                linestyle = '--')
+            if i == 0:
+                legend_list += [name+'_acados']
             plt.legend(legend_list)
             plt.xlabel('dP2')
             plt.ylabel('u0 - u0_economic: {}'.format(ctrl_name[i]))

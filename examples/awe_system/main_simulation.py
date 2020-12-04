@@ -30,7 +30,7 @@ Example description found in:
 
 TuneMPC - A Tool for Economic Tuning of Tracking (N)MPC Problems
 J. De Schutter, M. Zanon, M. Diehl
-(pending approval)
+IEEE Control Systems Letters 2020
 
 :author: Jochem De Schutter
 
@@ -68,6 +68,8 @@ ns = sol['sys']['vars']['us'].shape[0]
 # set-up open-loop scenario
 Nmpc  = 20
 alpha_steps = 20
+TUNEMPC_SIM = False # simulate with TuneMPC built-in MPC controllers
+ACADOS_SIM = True # simulate with acados code-generated MPC solvers
 
 # tether length
 l_t = np.sqrt(
@@ -96,12 +98,14 @@ mpc_sys = preprocessing.add_mpc_slacks(
 ctrls = {}
 
 # # economic MPC
+tuning = {'H': sol['S']['Hc'], 'q': sol['S']['q']}
 ctrls['EMPC'] = pmpc.Pmpc(
     N = Nmpc,
     sys = mpc_sys,
     cost = user_input['l'],
     wref = sol['wsol'],
     lam_g_ref = sol['lam_g'],
+    sensitivities= sol['S'],
     options = opts
 )
 
@@ -120,9 +124,10 @@ ctrls['TMPC_1'] = pmpc.Pmpc(
     wref = sol['wsol'],
     tuning = tuningTn,
     lam_g_ref = lam_g0,
+    sensitivities= sol['S'],
     options = opts
 )
-# # manually tuned tracking MPC
+# manually tuned tracking MPC
 Ht2 = [np.diag([0.1,0.1,0.1, 1.0, 1.0, 1.0, 1.0e3, 1.0, 100.0, 1.0, 1.0, 1.0, 1e-10, 1e-10, 1e-10])]*user_input['p']
 tuningTn2 = {'H': Ht2, 'q': sol['S']['q']}
 ctrls['TMPC_2'] = pmpc.Pmpc(
@@ -132,11 +137,11 @@ ctrls['TMPC_2'] = pmpc.Pmpc(
     wref = sol['wsol'],
     tuning = tuningTn2,
     lam_g_ref = lam_g0,
+    sensitivities= sol['S'],
     options = opts
 )
 
 # tuned tracking MPC
-tuning = {'H': sol['S']['Hc'], 'q': sol['S']['q']}
 ctrls['TUNEMPC'] = pmpc.Pmpc(
     N = Nmpc,
     sys = mpc_sys,
@@ -144,35 +149,41 @@ ctrls['TUNEMPC'] = pmpc.Pmpc(
     wref = sol['wsol'],
     tuning = tuning,
     lam_g_ref = lam_g0,
+    sensitivities= sol['S'],
     options = opts
 )
 
-ACADOS_CODEGENERATE = True
-if ACADOS_CODEGENERATE:
+if ACADOS_SIM:
 
     # get system dae
     alg = user_input['dyn']
 
     # solver options
     opts = {}
-    opts['integrator_type'] = 'IRK'
+    opts['integrator_type'] = 'IRK' # ERK, IRK, GNSF
     opts['nlp_solver_type'] = 'SQP' # SQP_RTI
     # opts['qp_solver_cond_N'] = Nmpc # ???
     opts['print_level'] = 1
     opts['sim_method_num_steps'] = 1
     opts['tf'] = Nmpc*user_input['ts']
-    opts['nlp_solver_max_iter'] = 10
+    opts['nlp_solver_max_iter'] = 50
     opts['nlp_solver_step_length'] = 0.9
+    opts['nlp_solver_tol_comp'] = 1e-5
+    opts['nlp_solver_tol_eq'] = 1e-5
+    opts['nlp_solver_tol_ineq'] = 1e-5
+    opts['nlp_solver_tol_stat'] = 1e-5
 
     ctrls_acados = {}
     for ctrl_key in list(ctrls.keys()):
         if ctrl_key == 'EMPC':
-            opts['hessian_approx'] = 'GAUSS_NEWTON' # EXACT not supported for nz > 0
+            opts['hessian_approx'] = 'GAUSS_NEWTON'
             opts['qp_solver'] = 'PARTIAL_CONDENSING_HPIPM'
-
+            opts['ext_cost_custom_hessian'] = False
+            opts['custom_hessian'] = sol['S']['Hc']
         else:
             opts['hessian_approx'] = 'GAUSS_NEWTON'
             opts['qp_solver'] = 'PARTIAL_CONDENSING_HPIPM' # faster than full condensing
+            opts['ext_cost_custom_hessian'] = False
 
         _, _ = ctrls[ctrl_key].generate(alg, opts = opts, name = 'awe_'+ctrl_key)
         ctrls_acados[ctrl_key+'_ACADOS'] = ctrls[ctrl_key]
@@ -199,8 +210,9 @@ for alph in alpha:
     x_init[2] = x_init[2] + alph*dz
     x_init[0] = np.sqrt(-x_init[2]**2-x_init[1]**2+(l_t)**2)
     x_init[5] = -(x_init[0]*x_init[3] + x_init[1]*x_init[4]) / x_init[2]
-    log.append(clt.check_equivalence(ctrls, user_input['l'], user_input['h'], x0, x_init-x0, [1.0])[-1])
-    if ACADOS_CODEGENERATE:
+    if TUNEMPC_SIM:
+        log.append(clt.check_equivalence(ctrls, user_input['l'], user_input['h'], x0, x_init-x0, [1.0])[-1])
+    if ACADOS_SIM:
         log_acados.append(clt.check_equivalence(
             ctrls_acados,
             user_input['l'],
@@ -234,26 +246,33 @@ ctrls_markers =  {
     'TMPC_2': 'x'
 }
 
-if ACADOS_CODEGENERATE:
+if ACADOS_SIM:
     for ctrl_key in list(ctrls_acados.keys()):
-        ctrls_colors[ctrl_key] = 'gray'
+        ctrls_colors[ctrl_key] = ctrls_colors[ctrl_key[:-7]]
         ctrls_lstyle[ctrl_key] = ctrls_lstyle[ctrl_key[:-7]]
         ctrls_markers[ctrl_key] = ctrls_markers[ctrl_key[:-7]]
 
-ctrls_list = list(ctrls_colors.keys())
+ctrls_list = []
+if TUNEMPC_SIM:
+    ctrls_list += list(ctrls.keys())
+if ACADOS_SIM:
+    ctrls_list += list(ctrls_acados.keys())
+
 # plot feedback equivalence
 plt.figure(1)
 for name in ctrls_list:
-    if name != 'EMPC':
+    if name not in ['EMPC', 'EMPC_ACADOS']:
         if name[-6:] == 'ACADOS':
             plot_log = log_acados
+            EMPC_key = 'EMPC_ACADOS'
         else:
             plot_log = log
+            EMPC_key = 'EMPC'
         feedback_norm = [
             np.linalg.norm(
                 np.divide(
-                    np.array(plot_log[k]['u'][name][0]) - np.array(log[k]['u']['EMPC'][0]),
-                    np.array(log[0]['u']['EMPC'][0]))
+                    np.array(plot_log[k]['u'][name][0]) - np.array(plot_log[k]['u'][EMPC_key][0]),
+                    np.array(plot_log[0]['u'][EMPC_key][0]))
             ) for k in range(len(alpha))]
         plt.plot(
             [dz*alph for alph in alpha],
@@ -340,7 +359,7 @@ plt.legend(ctrls_list)
 plt.title('Transient cost')
 plt.xlabel(r'$\alpha \ \mathrm{[-]}$')
 
-if ACADOS_CODEGENERATE:
+if ACADOS_SIM:
 
     # plot time per iteration
     plt.figure(5)

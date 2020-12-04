@@ -30,7 +30,7 @@ Example description found in:
 
 TuneMPC - A Tool for Economic Tuning of Tracking (N)MPC Problems
 J. De Schutter, M. Zanon, M. Diehl
-(pending approval)
+IEEE Control Systems Letters 2020
 
 :author: Jochem De Schutter
 
@@ -98,12 +98,14 @@ mpc_sys = preprocessing.add_mpc_slacks(
 ctrls = {}
 
 # # economic MPC
+tuning = {'H': sol['S']['Hc'], 'q': sol['S']['q']}
 ctrls['EMPC'] = pmpc.Pmpc(
     N = Nmpc,
     sys = mpc_sys,
     cost = user_input['l'],
     wref = sol['wsol'],
     lam_g_ref = sol['lam_g'],
+    sensitivities= sol['S'],
     options = opts
 )
 
@@ -122,9 +124,10 @@ ctrls['TMPC_1'] = pmpc.Pmpc(
     wref = sol['wsol'],
     tuning = tuningTn,
     lam_g_ref = lam_g0,
+    sensitivities= sol['S'],
     options = opts
 )
-# # manually tuned tracking MPC
+# manually tuned tracking MPC
 Ht2 = [np.diag([0.1,0.1,0.1, 1.0, 1.0, 1.0, 1.0e3, 1.0, 100.0, 1.0, 1.0, 1.0, 1e-10, 1e-10, 1e-10])]*user_input['p']
 tuningTn2 = {'H': Ht2, 'q': sol['S']['q']}
 ctrls['TMPC_2'] = pmpc.Pmpc(
@@ -134,11 +137,11 @@ ctrls['TMPC_2'] = pmpc.Pmpc(
     wref = sol['wsol'],
     tuning = tuningTn2,
     lam_g_ref = lam_g0,
+    sensitivities= sol['S'],
     options = opts
 )
 
 # tuned tracking MPC
-tuning = {'H': sol['S']['Hc'], 'q': sol['S']['q']}
 ctrls['TUNEMPC'] = pmpc.Pmpc(
     N = Nmpc,
     sys = mpc_sys,
@@ -146,6 +149,7 @@ ctrls['TUNEMPC'] = pmpc.Pmpc(
     wref = sol['wsol'],
     tuning = tuning,
     lam_g_ref = lam_g0,
+    sensitivities= sol['S'],
     options = opts
 )
 

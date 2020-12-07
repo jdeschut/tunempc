@@ -142,7 +142,11 @@ def convexify(A, B, Q, R, N, G = None, C = None, opts = {'rho':1e-3, 'solver':'m
 
             Logger.logger.info('Step 3: (\u03B7_F = 1), (\u03B7_T = 1)')
             Logger.logger.info('Enforcing convexification...')
-            raise ValueError('Step 3 not implemented yet.')
+
+            M = setUpModelPicos(**arg, rho = opts['rho'], constr = constraint_contribution, force = True)
+            M = solveSDP(M, opts)
+            status, dHc, dQc, dRc, dNc = check_convergence(M, scaling, **arg, constr = constraint_contribution, force = True)
+
             Logger.logger.warning(50*'*')
 
         else:
@@ -158,7 +162,7 @@ def convexify(A, B, Q, R, N, G = None, C = None, opts = {'rho':1e-3, 'solver':'m
 
     return dHc, dQc, dRc, dNc
 
-def convexHessianSuppl(A, B, Q, R, N, dP, G = None, Fg = None, C = None, F = None):
+def convexHessianSuppl(A, B, Q, R, N, dP, G = None, Fg = None, C = None, F = None, T = None):
 
     """ Construct the convexified Hessian Supplement
 
@@ -195,6 +199,8 @@ def convexHessianSuppl(A, B, Q, R, N, dP, G = None, Fg = None, C = None, F = Non
             if C[i] is not None:
                 nc = C[i].shape[0]
                 Hco = Hco + np.dot(np.dot(C[i].T, np.diagflat(F[i])), C[i])
+        if T:
+            Hco = Hco + T[i]
 
         # symmetrize
         dHc.append(mtools.symmetrize(Hco))
@@ -204,7 +210,7 @@ def convexHessianSuppl(A, B, Q, R, N, dP, G = None, Fg = None, C = None, F = Non
 
     return dHc, dQc, dRc, dNc
 
-def setUpModelPicos(A, B, Q, R, N, G = None, C = None, rho = 1e-3, constr = True):
+def setUpModelPicos(A, B, Q, R, N, G = None, C = None, rho = 1e-3, constr = True, force = False):
 
     """ Description
     :param A:
@@ -259,24 +265,40 @@ def setUpModelPicos(A, B, Q, R, N, G = None, C = None, rho = 1e-3, constr = True
             else:
                 F.append(None)
 
+    # force regularisation
+    if force:
+        T = []
+        for i in range(period):
+            T.append(M.add_variable('T'+str(i), (nx+nu,nx+nu), vtype='symmetric'))
+            M.add_constraint(T[i] > 0)
+
     # objective
     obj = beta # minimize condition number
-    if constr is True:
+    if constr:
         for i in range(period):
             if F[i] is not None:
                 obj = picos.sum(obj, abs(rho*F[i]))
             if G is not None:
                 obj = picos.sum(obj, abs(rho*Fg[i]))
+    if force:
+        for i in range(period):
+            obj = picos.sum(obj, abs(rho*T[i]))
 
     M.set_objective('min', obj)
 
     # formulate convexified Hessian expression
-    if not constr:
+    if not constr and not force:
         HcE = [convexHessianExprPicos(Q, R, N, A, B, dP, alpha, scaling, G = G, Fg = Fg, index = i)  \
             for i in range(period)]
-    else:
+    elif constr and not force:
         HcE = [convexHessianExprPicos(Q, R, N, A, B, dP, alpha, scaling, G = G, Fg = Fg, C = C, F = F, index = i) \
              for i in range(period)]
+    elif not constr and force:
+        HcE = [convexHessianExprPicos(Q, R, N, A, B, dP, alpha, scaling, G = G, Fg = Fg, T = T, index = i) \
+             for i in range(period)]
+    else:
+        HcE = [convexHessianExprPicos(Q, R, N, A, B, dP, alpha, scaling, G = G, Fg = Fg, C = C, F = F, T = T, index = i) \
+             for i in range(period)]        
 
     # formulate constraints
     for i in range(period):
@@ -285,7 +307,7 @@ def setUpModelPicos(A, B, Q, R, N, G = None, C = None, rho = 1e-3, constr = True
 
     return M
 
-def convexHessianExprPicos(Q, R, N, A, B, dP, alpha, scaling, index, G = None, C = None, F = None, Fg = None):
+def convexHessianExprPicos(Q, R, N, A, B, dP, alpha, scaling, index, G = None, C = None, F = None, Fg = None, T = None):
 
     """ Construct the Picos symbolic expression of the convexified Hessian
     
@@ -326,6 +348,11 @@ def convexHessianExprPicos(Q, R, N, A, B, dP, alpha, scaling, index, G = None, C
     if F is not None:
         if F[index] is not None:
             dH = dH + CM.T*picos.diag(scaling['F']*F[index])*CM
+
+    # add free regularisation
+    if T is not None:
+        if T[index] is not None:
+            dH = dH + scaling['T']*T[index]
 
     return H+dH
 
@@ -373,7 +400,7 @@ def autoScaling(Q, R, N):
 
     return scaling
 
-def check_convergence(M, scaling, A, B, Q, R, N, G = None, Fg = None, C = None, constr = False):
+def check_convergence(M, scaling, A, B, Q, R, N, G = None, Fg = None, C = None, constr = False, force = False):
 
     # build convex hessian list
     dP = [scaling['dP']*np.array(M.variables['dP'+str(i)].value)/(scaling['alpha']*M.variables['alpha'].value) \
@@ -383,12 +410,22 @@ def check_convergence(M, scaling, A, B, Q, R, N, G = None, Fg = None, C = None, 
         Fg = [scaling['F']*np.array(M.variables['Fg'+str(i)].value)/(scaling['alpha']*M.variables['alpha'].value) \
             for i in range(len(A))]
 
-    if not constr:
+    if not constr and not force: 
         dHc, dQc, dRc, dNc = convexHessianSuppl( A, B, Q, R, N, dP, G = G, Fg = Fg)
-    else:
+    if constr:
         F = [scaling['F']*np.array(M.variables['F'+str(i)].value)/(scaling['alpha']*M.variables['alpha'].value) \
             for i in range(len(A))]
-        dHc, dQc, dRc, dNc = convexHessianSuppl( A, B, Q, R, N, dP, G = G, Fg = Fg, C = C,  F = F)
+        if not force:
+            dHc, dQc, dRc, dNc = convexHessianSuppl( A, B, Q, R, N, dP, G = G, Fg = Fg, C = C,  F = F)
+        else:
+            T = [scaling['T']*np.array(M.variables['T'+str(i)].value)/(scaling['alpha']*M.variables['alpha'].value) \
+                for i in range(len(A))]
+            dHc, dQc, dRc, dNc = convexHessianSuppl( A, B, Q, R, N, dP, G = G, Fg = Fg, C = C,  F = F, T = T)
+    else:
+        if force:
+            T = [scaling['T']*np.array(M.variables['T'+str(i)].value)/(scaling['alpha']*M.variables['alpha'].value) \
+                for i in range(len(A))]
+            dHc, dQc, dRc, dNc = convexHessianSuppl( A, B, Q, R, N, dP, G = G, Fg = Fg, T = T)
 
     # add hessian supplements
     Hc = [mtools.buildHessian(Q[k], R[k], N[k]) + dHc[k] for k in range(len(dHc))]

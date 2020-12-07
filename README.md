@@ -107,7 +107,7 @@ This project has received funding by DFG via Research Unit FOR 2401 and by an in
 
 [TuneMPC - A Tool for Economic Tuning of Tracking (N)MPC Problems](https://github.com/jdeschut/tunempc/blob/master/docs/tunempc_paper.pdf) \
 J. De Schutter, M. Zanon, M. Diehl \
-(pending approval)
+IEEE Control Systems Letters 2020
 
 ### Theory
 

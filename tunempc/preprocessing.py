@@ -67,12 +67,12 @@ def input_formatting(sys):
             # TODO: allow for varying dimension of g    
             sys['vars']['us'] = ca.MX.sym('us',ns)
 
-    # unpack lists for len == 1
-    if len(sys['h']) == 1:
-        sys['h'] = sys['h'][0]
-        if 'g' in sys:
-            sys['g'] = sys['g'][0]
-            sys['vars']['us'] = sys['vars']['us'][0]
+        # unpack lists for len == 1
+        if len(sys['h']) == 1:
+            sys['h'] = sys['h'][0]
+            if 'g' in sys:
+                sys['g'] = sys['g'][0]
+                sys['vars']['us'] = sys['vars']['us'][0]
 
     return sys
 

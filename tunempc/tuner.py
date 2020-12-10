@@ -110,7 +110,10 @@ class Tuner(object):
 
                 # initialize slacks
                 if 'g' in self.__sys:
-                    w_init['us',k] = self.__sys['g'](w_init['x',k], w_init['u',k],0.0)
+                    if type(self.__sys['g']) == list:
+                        w_init['us',k] = self.__sys['g'][k](w_init['x',k], w_init['u',k],0.0)
+                    else:
+                        w_init['us',k] = self.__sys['g'](w_init['x',k], w_init['u',k],0.0)
 
         # solve OCP
         Logger.logger.info(60*'=')
@@ -223,7 +226,7 @@ class Tuner(object):
         Logger.logger.info('')
         Logger.logger.info('Number of states:................:  {}'.format(self.__nx))
         Logger.logger.info('Number of controls:..............:  {}'.format(self.__nu))
-        if 'h' in self.__sys:
+        if ('h' in self.__sys) and type(self.__sys['h']) != list:
             Logger.logger.info('Number of linear constraints:....:  {}'.format(self.__sys['h'].size1_out(0)-self.__nus))
             Logger.logger.info('Number of nonlinear constraints:.:  {}'.format(self.__nus))
         Logger.logger.info('Steady-state period:.............:  {}'.format(self.__p))

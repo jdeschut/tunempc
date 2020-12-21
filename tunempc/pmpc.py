@@ -61,7 +61,7 @@ class Pmpc(object):
             self.__nsc = 0
 
         # store system dynamics
-        self.__F    = sys['f']
+        self.__F = sys['f']
 
         # store path constraints
         if 'h' in sys:
@@ -471,7 +471,7 @@ class Pmpc(object):
 
         return u0
 
-    def generate(self, dae, name = 'tunempc', opts = {}):
+    def generate(self, dae = None, quad = None, name = 'tunempc', opts = {}):
 
         """ Create embeddable NLP solver
         """
@@ -495,41 +495,47 @@ class Pmpc(object):
         model.name = name
 
         # detect input type
-        n_in = dae.n_in()
-        if n_in == 2:
-
-            # xdot = f(x, u)
-            if 'integrator_type' in opts:
-                if opts['integrator_type'] in ['IRK','GNSF']:
-                    xdot = ca.MX.sym('xdot', nx)
-                    model.xdot = xdot
-                    model.f_impl_expr = xdot - dae(model.x, model.u[:self.__nu])
-                    model.f_expl_expr = xdot
-                elif opts['integrator_type'] == 'ERK':
-                    model.f_expl_expr = dae(model.x, model.u[:self.__nu])
-            else:
-                raise ValueError('Provide numerical integrator type!')
-
+        if dae is None:
+            model.f_expl_expr = self.__F(x0=model.x, p=model.u)['xf']/(opts['tf']/self.__N)
+            opts['integrator_type'] = 'ERK'
+            opts['sim_method_num_stages'] = 1
+            opts['sim_method_num_steps'] = 1
         else:
+            n_in = dae.n_in()
+            if n_in == 2:
 
-            xdot = ca.MX.sym('xdot', nx)
-            model.xdot = xdot
-            model.f_expl_expr = xdot
+                # xdot = f(x, u)
+                if 'integrator_type' in opts:
+                    if opts['integrator_type'] in ['IRK','GNSF']:
+                        xdot = ca.MX.sym('xdot', nx)
+                        model.xdot = xdot
+                        model.f_impl_expr = xdot - dae(model.x, model.u[:self.__nu])
+                        model.f_expl_expr = xdot
+                    elif opts['integrator_type'] == 'ERK':
+                        model.f_expl_expr = dae(model.x, model.u[:self.__nu])
+                else:
+                    raise ValueError('Provide numerical integrator type!')
 
-            if n_in == 3:
-
-                # f(xdot, x, u) = 0
-                model.f_impl_expr = dae(xdot, model.x, model.u[:self.__nu])
-
-            elif n_in == 4:
-
-                # f(xdot, x, u, z) = 0 
-                nz = dae.size1_in(3)
-                z = ca.MX.sym('z', nz)
-                model.z = z
-                model.f_impl_expr = dae(xdot, model.x, model.u[:self.__nu], z)
             else:
-                raise ValueError('Invalid number of inputs for system dynamics function.')
+
+                xdot = ca.MX.sym('xdot', nx)
+                model.xdot = xdot
+                model.f_expl_expr = xdot
+
+                if n_in == 3:
+
+                    # f(xdot, x, u) = 0
+                    model.f_impl_expr = dae(xdot, model.x, model.u[:self.__nu])
+
+                elif n_in == 4:
+
+                    # f(xdot, x, u, z) = 0 
+                    nz = dae.size1_in(3)
+                    z = ca.MX.sym('z', nz)
+                    model.z = z
+                    model.f_impl_expr = dae(xdot, model.x, model.u[:self.__nu], z)
+                else:
+                    raise ValueError('Invalid number of inputs for system dynamics function.')
 
         if self.__gnl is not None:
             model.con_h_expr = self.__gnl(model.x, model.u[:self.__nu], model.u[self.__nu:])

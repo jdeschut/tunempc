@@ -1,3 +1,6 @@
 [submodule "external/acados"]
 	path = external/acados
 	url = https://github.com/jdeschut/acados
+[submodule "examples/awe_system/awebox"]
+	path = examples/awe_system/awebox
+	url = https://github.com/awebox/awebox.git

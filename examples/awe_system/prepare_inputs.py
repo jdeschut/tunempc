@@ -46,14 +46,15 @@ def generate_kite_model_and_orbit(N):
     options['user_options']['system_model']['kite_dof'] = 3
     options['user_options']['kite_standard'] = point_mass_model.data_dict()
 
-    # trajectory should be a single pumping cycle with initial number of five windings
+    # trajectory should be a single drag-mode cycle
     options['user_options']['trajectory']['type'] = 'power_cycle'
     options['user_options']['trajectory']['system_type'] = 'drag_mode'
-    options['user_options']['trajectory']['lift_mode']['windings'] = 1
 
-    # don't include induction effects, use simple tether drag
+    # don't include induction effects, use simple tether drag model
     options['user_options']['induction_model'] = 'not_in_use'
-    options['user_options']['tether_drag_model'] = 'trivial'
+    options['user_options']['tether_drag_model'] = 'split'
+    options['model']['tether']['use_wound_tether'] = False
+
     options['nlp']['n_k'] = N
 
     # get point mass model data
@@ -144,8 +145,9 @@ w0 = awe_sol['w0']
 # save time-continuous dynamics
 xdot = ca.MX.sym('xdot', x.shape[0])
 xdot_awe = ct.vertcat(xdot, 0.0, 0.0, 0.0)# remove l, ldot, lddot
-z = ca.MX.sym('z', model['dae']['z']['xa'].shape[0])
-indeces = [*range(2,10)]+[*range(11,nx+3+z.shape[0])] # remove ldot, lddot, ldddot
+z = ca.MX.sym('z', model['dae']['z']['xa'].shape[0]+model['dae']['z']['xl'].shape[0])
+rm_indeces = [6,7,9] # rm l, ldot, lddot implicit ode equations
+indeces = [k for k in range(nx+3+z.shape[0]) if k not in rm_indeces]
 alg = model['dae']['alg'][indeces] 
 alg_fun = ca.Function('alg_fun',[model['dae']['x'],model['dae']['p'],model['dae']['z']],[alg])
 dyn = ca.Function(
@@ -154,6 +156,14 @@ dyn = ca.Function(
     [alg_fun(x_awe, u_awe, ct.vertcat(xdot_awe, z))],
     ['xdot','x','u','z'],
     ['dyn'])
+quad_fun = ca.Function('quad_fun',[model['dae']['x'],model['dae']['p']], [model['dae']['quad']])
+quad = ca.Function(
+    'quad',
+    [x,u],
+    [quad_fun(x_awe, u_awe)],
+    ['x','u'],
+    ['quad']
+)
 
 # save user input info
 with open('user_input.pkl','wb') as f:
@@ -164,5 +174,6 @@ with open('user_input.pkl','wb') as f:
             'p': N,
             'w0': w0,
             'dyn': dyn,
+            'quad': quad,
             'ts': model['t_f']/N
         },f)

@@ -644,8 +644,8 @@ class Pmpc(object):
                 ocp.constraints.Jsg = self.__Jsg
                 ocp.cost.Zl = np.zeros((self.__nsc,))
                 ocp.cost.Zu = np.zeros((self.__nsc,))
-                ocp.cost.zl = np.squeeze(self.__scost.full(), axis = 1)
-                ocp.cost.zu = np.squeeze(self.__scost.full(), axis = 1)
+                ocp.cost.zl = np.squeeze(self.__scost.full(), axis = 1)/(opts['tf']/self.__N)
+                ocp.cost.zu = np.squeeze(self.__scost.full(), axis = 1)/(opts['tf']/self.__N)
 
         # set nonlinear equality constraints
         if self.__gnl is not None:

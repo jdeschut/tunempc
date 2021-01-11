@@ -20,7 +20,8 @@
 #
 #
 #!/usr/bin/python3
-""" AWEbox optimization toolbox is available at: https://github.com/awebox/awebox
+""" awebox optimization toolbox is available at: https://github.com/awebox/awebox
+commit hash: 561f1726f28357e04b2e6a1163a1b30753670784
 
 :author: Jochem De Schutter
 

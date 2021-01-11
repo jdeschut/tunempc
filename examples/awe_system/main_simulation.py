@@ -178,12 +178,9 @@ if ACADOS_SIM:
         if ctrl_key == 'EMPC':
             opts['hessian_approx'] = 'GAUSS_NEWTON'
             opts['qp_solver'] = 'PARTIAL_CONDENSING_HPIPM'
-            opts['ext_cost_custom_hessian'] = False
-            opts['custom_hessian'] = sol['S']['Hc']
         else:
             opts['hessian_approx'] = 'GAUSS_NEWTON'
             opts['qp_solver'] = 'PARTIAL_CONDENSING_HPIPM' # faster than full condensing
-            opts['ext_cost_custom_hessian'] = False
 
         _, _ = ctrls[ctrl_key].generate(alg, opts = opts, name = 'awe_'+ctrl_key)
         ctrls_acados[ctrl_key+'_ACADOS'] = ctrls[ctrl_key]

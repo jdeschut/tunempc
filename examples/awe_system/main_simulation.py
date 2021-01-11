@@ -68,8 +68,8 @@ ns = sol['sys']['vars']['us'].shape[0]
 # set-up open-loop scenario
 Nmpc  = 20
 alpha_steps = 20
-TUNEMPC_SIM = False # simulate with TuneMPC built-in MPC controllers
-ACADOS_SIM = True # simulate with acados code-generated MPC solvers
+TUNEMPC_SIM = True # simulate with TuneMPC built-in MPC controllers
+ACADOS_SIM = False # simulate with acados code-generated MPC solvers
 
 # tether length
 l_t = np.sqrt(
@@ -166,8 +166,8 @@ if ACADOS_SIM:
     opts['print_level'] = 1
     opts['sim_method_num_steps'] = 1
     opts['tf'] = Nmpc*user_input['ts']
-    opts['nlp_solver_max_iter'] = 50
-    opts['nlp_solver_step_length'] = 0.9
+    opts['nlp_solver_max_iter'] = 100
+    opts['nlp_solver_step_length'] = 0.8
     opts['nlp_solver_tol_comp'] = 1e-5
     opts['nlp_solver_tol_eq'] = 1e-5
     opts['nlp_solver_tol_ineq'] = 1e-5

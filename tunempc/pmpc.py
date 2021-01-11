@@ -487,6 +487,9 @@ class Pmpc(object):
         xref = np.squeeze(self.__ref[0][:nx], axis = 1)
         uref = np.squeeze(self.__ref[0][nx: nx + nu], axis = 1)
 
+        # sampling time
+        self.__ts   = opts['tf']/self.__N
+
         # create acados model
         model = AcadosModel()
         model.x = ca.MX.sym('x',nx)
@@ -496,7 +499,7 @@ class Pmpc(object):
 
         # detect input type
         if dae is None:
-            model.f_expl_expr = self.__F(x0=model.x, p=model.u)['xf']/(opts['tf']/self.__N)
+            model.f_expl_expr = self.__F(x0=model.x, p=model.u)['xf']/self.__ts
             opts['integrator_type'] = 'ERK'
             opts['sim_method_num_stages'] = 1
             opts['sim_method_num_steps'] = 1
@@ -542,7 +545,7 @@ class Pmpc(object):
 
         if self.__type == 'economic':
             if quad is None:
-                model.cost_expr_ext_cost = self.__cost(model.x, model.u[:self.__nu])/opts['tf']*self.__N
+                model.cost_expr_ext_cost = self.__cost(model.x, model.u[:self.__nu])/self.__ts
             else:
                 model.cost_expr_ext_cost = self.__cost(model.x, model.u[:self.__nu])
 
@@ -585,11 +588,10 @@ class Pmpc(object):
             if quad is not None:
                 ocp.solver_options.cost_discretization = 'INTEGRATOR'
 
-        else:
+        elif self.__type == 'tracking':
 
             # set weighting matrices
-            if self.__type == 'tracking':
-                ocp.cost.W = self.__Href[0][0]
+            ocp.cost.W = self.__Href[0][0]
 
             # set-up linear least squares cost
             ocp.cost.cost_type = 'LINEAR_LS'
@@ -644,8 +646,8 @@ class Pmpc(object):
                 ocp.constraints.Jsg = self.__Jsg
                 ocp.cost.Zl = np.zeros((self.__nsc,))
                 ocp.cost.Zu = np.zeros((self.__nsc,))
-                ocp.cost.zl = np.squeeze(self.__scost.full(), axis = 1)/(opts['tf']/self.__N)
-                ocp.cost.zu = np.squeeze(self.__scost.full(), axis = 1)/(opts['tf']/self.__N)
+                ocp.cost.zl = np.squeeze(self.__scost.full(), axis = 1)/self.__ts
+                ocp.cost.zu = np.squeeze(self.__scost.full(), axis = 1)/self.__ts
 
         # set nonlinear equality constraints
         if self.__gnl is not None:
@@ -962,14 +964,14 @@ class Pmpc(object):
                 yref = np.squeeze(
                     ca.vertcat(xref,uref).full() - \
                     ct.mtimes(
-                        np.linalg.inv(self.__Href[idx][0]), # inverse of weighting matrix
-                        self.__qref[idx][0].T).full(), # gradient term
+                        np.linalg.inv(self.__Href[idx][0]/self.__ts), # inverse of weighting matrix
+                        self.__qref[idx][0].T).full()/self.__ts, # gradient term
                     axis = 1
                     )
                 self.__acados_ocp_solver.set(i, 'yref', yref)
 
                 # update tuning matrix
-                self.__acados_ocp_solver.cost_set(i, 'W', self.__Href[idx][0])
+                self.__acados_ocp_solver.cost_set(i, 'W', self.__Href[idx][0]/self.__ts)
 
             # set custom hessians if applicable
             # if self.__acados_ocp_solver.acados_ocp.solver_options.ext_cost_custom_hessian:

@@ -541,7 +541,10 @@ class Pmpc(object):
             model.con_h_expr = self.__gnl(model.x, model.u[:self.__nu], model.u[self.__nu:])
 
         if self.__type == 'economic':
-            model.cost_expr_ext_cost = self.__cost(model.x, model.u[:self.__nu])/opts['tf']*self.__N
+            if quad is None:
+                model.cost_expr_ext_cost = self.__cost(model.x, model.u[:self.__nu])/opts['tf']*self.__N
+            else:
+                model.cost_expr_ext_cost = self.__cost(model.x, model.u[:self.__nu])
 
 
         # create acados ocp
@@ -578,6 +581,10 @@ class Pmpc(object):
 
             # set cost function type to external (provided in model)
             ocp.cost.cost_type = 'EXTERNAL'
+
+            if quad is not None:
+                ocp.solver_options.cost_discretization = 'INTEGRATOR'
+
         else:
 
             # set weighting matrices

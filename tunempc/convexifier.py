@@ -413,8 +413,12 @@ def check_convergence(M, scaling, A, B, Q, R, N, G = None, Fg = None, C = None, 
     if not constr and not force: 
         dHc, dQc, dRc, dNc = convexHessianSuppl( A, B, Q, R, N, dP, G = G, Fg = Fg)
     if constr:
-        F = [scaling['F']*np.array(M.variables['F'+str(i)].value)/(scaling['alpha']*M.variables['alpha'].value) \
-            for i in range(len(A))]
+        F = []
+        for i in range(len(A)):
+            if 'F'+str(i) in M.variables:
+                F.append(scaling['F']*np.array(M.variables['F'+str(i)].value)/(scaling['alpha']*M.variables['alpha'].value))
+            else:
+                F.append(None)
         if not force:
             dHc, dQc, dRc, dNc = convexHessianSuppl( A, B, Q, R, N, dP, G = G, Fg = Fg, C = C,  F = F)
         else:

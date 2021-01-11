@@ -61,7 +61,7 @@ class Pmpc(object):
             self.__nsc = 0
 
         # store system dynamics
-        self.__F    = sys['f']
+        self.__F = sys['f']
 
         # store path constraints
         if 'h' in sys:
@@ -471,7 +471,7 @@ class Pmpc(object):
 
         return u0
 
-    def generate(self, dae, name = 'tunempc', opts = {}):
+    def generate(self, dae = None, quad = None, name = 'tunempc', opts = {}):
 
         """ Create embeddable NLP solver
         """
@@ -487,6 +487,9 @@ class Pmpc(object):
         xref = np.squeeze(self.__ref[0][:nx], axis = 1)
         uref = np.squeeze(self.__ref[0][nx: nx + nu], axis = 1)
 
+        # sampling time
+        self.__ts   = opts['tf']/self.__N
+
         # create acados model
         model = AcadosModel()
         model.x = ca.MX.sym('x',nx)
@@ -495,47 +498,56 @@ class Pmpc(object):
         model.name = name
 
         # detect input type
-        n_in = dae.n_in()
-        if n_in == 2:
-
-            # xdot = f(x, u)
-            if 'integrator_type' in opts:
-                if opts['integrator_type'] in ['IRK','GNSF']:
-                    xdot = ca.MX.sym('xdot', nx)
-                    model.xdot = xdot
-                    model.f_impl_expr = xdot - dae(model.x, model.u[:self.__nu])
-                    model.f_expl_expr = xdot
-                elif opts['integrator_type'] == 'ERK':
-                    model.f_expl_expr = dae(model.x, model.u[:self.__nu])
-            else:
-                raise ValueError('Provide numerical integrator type!')
-
+        if dae is None:
+            model.f_expl_expr = self.__F(x0=model.x, p=model.u)['xf']/self.__ts
+            opts['integrator_type'] = 'ERK'
+            opts['sim_method_num_stages'] = 1
+            opts['sim_method_num_steps'] = 1
         else:
+            n_in = dae.n_in()
+            if n_in == 2:
 
-            xdot = ca.MX.sym('xdot', nx)
-            model.xdot = xdot
-            model.f_expl_expr = xdot
+                # xdot = f(x, u)
+                if 'integrator_type' in opts:
+                    if opts['integrator_type'] in ['IRK','GNSF']:
+                        xdot = ca.MX.sym('xdot', nx)
+                        model.xdot = xdot
+                        model.f_impl_expr = xdot - dae(model.x, model.u[:self.__nu])
+                        model.f_expl_expr = xdot
+                    elif opts['integrator_type'] == 'ERK':
+                        model.f_expl_expr = dae(model.x, model.u[:self.__nu])
+                else:
+                    raise ValueError('Provide numerical integrator type!')
 
-            if n_in == 3:
-
-                # f(xdot, x, u) = 0
-                model.f_impl_expr = dae(xdot, model.x, model.u[:self.__nu])
-
-            elif n_in == 4:
-
-                # f(xdot, x, u, z) = 0 
-                nz = dae.size1_in(3)
-                z = ca.MX.sym('z', nz)
-                model.z = z
-                model.f_impl_expr = dae(xdot, model.x, model.u[:self.__nu], z)
             else:
-                raise ValueError('Invalid number of inputs for system dynamics function.')
+
+                xdot = ca.MX.sym('xdot', nx)
+                model.xdot = xdot
+                model.f_expl_expr = xdot
+
+                if n_in == 3:
+
+                    # f(xdot, x, u) = 0
+                    model.f_impl_expr = dae(xdot, model.x, model.u[:self.__nu])
+
+                elif n_in == 4:
+
+                    # f(xdot, x, u, z) = 0 
+                    nz = dae.size1_in(3)
+                    z = ca.MX.sym('z', nz)
+                    model.z = z
+                    model.f_impl_expr = dae(xdot, model.x, model.u[:self.__nu], z)
+                else:
+                    raise ValueError('Invalid number of inputs for system dynamics function.')
 
         if self.__gnl is not None:
             model.con_h_expr = self.__gnl(model.x, model.u[:self.__nu], model.u[self.__nu:])
 
         if self.__type == 'economic':
-            model.cost_expr_ext_cost = self.__cost(model.x, model.u[:self.__nu])/opts['tf']*self.__N
+            if quad is None:
+                model.cost_expr_ext_cost = self.__cost(model.x, model.u[:self.__nu])/self.__ts
+            else:
+                model.cost_expr_ext_cost = self.__cost(model.x, model.u[:self.__nu])
 
 
         # create acados ocp
@@ -572,11 +584,14 @@ class Pmpc(object):
 
             # set cost function type to external (provided in model)
             ocp.cost.cost_type = 'EXTERNAL'
-        else:
+
+            if quad is not None:
+                ocp.solver_options.cost_discretization = 'INTEGRATOR'
+
+        elif self.__type == 'tracking':
 
             # set weighting matrices
-            if self.__type == 'tracking':
-                ocp.cost.W = self.__Href[0][0]
+            ocp.cost.W = self.__Href[0][0]
 
             # set-up linear least squares cost
             ocp.cost.cost_type = 'LINEAR_LS'
@@ -596,8 +611,8 @@ class Pmpc(object):
             if n_in == 4: # DAE flag
                 ocp.cost.Vz = np.zeros((ny,nz))
 
-        if 'custom_hessian' in opts:
-            self.__custom_hessian = opts['custom_hessian']
+        # if 'custom_hessian' in opts:
+        #     self.__custom_hessian = opts['custom_hessian']
 
         # initial condition
         ocp.constraints.x0 = xref
@@ -631,8 +646,8 @@ class Pmpc(object):
                 ocp.constraints.Jsg = self.__Jsg
                 ocp.cost.Zl = np.zeros((self.__nsc,))
                 ocp.cost.Zu = np.zeros((self.__nsc,))
-                ocp.cost.zl = np.squeeze(self.__scost.full(), axis = 1)
-                ocp.cost.zu = np.squeeze(self.__scost.full(), axis = 1)
+                ocp.cost.zl = np.squeeze(self.__scost.full(), axis = 1)/self.__ts
+                ocp.cost.zu = np.squeeze(self.__scost.full(), axis = 1)/self.__ts
 
         # set nonlinear equality constraints
         if self.__gnl is not None:
@@ -949,18 +964,18 @@ class Pmpc(object):
                 yref = np.squeeze(
                     ca.vertcat(xref,uref).full() - \
                     ct.mtimes(
-                        np.linalg.inv(self.__Href[idx][0]), # inverse of weighting matrix
-                        self.__qref[idx][0].T).full(), # gradient term
+                        np.linalg.inv(self.__Href[idx][0]/self.__ts), # inverse of weighting matrix
+                        self.__qref[idx][0].T).full()/self.__ts, # gradient term
                     axis = 1
                     )
                 self.__acados_ocp_solver.set(i, 'yref', yref)
 
                 # update tuning matrix
-                self.__acados_ocp_solver.cost_set(i, 'W', self.__Href[idx][0])
+                self.__acados_ocp_solver.cost_set(i, 'W', self.__Href[idx][0]/self.__ts)
 
             # set custom hessians if applicable
-            if self.__acados_ocp_solver.acados_ocp.solver_options.ext_cost_custom_hessian:
-                self.__acados_ocp_solver.cost_set(i, "cost_custom_hess", self.__custom_hessian[idx])
+            # if self.__acados_ocp_solver.acados_ocp.solver_options.ext_cost_custom_hessian:
+            #     self.__acados_ocp_solver.cost_set(i, "cost_custom_hess", self.__custom_hessian[idx])
 
             # update constraint bounds
             if self.__h is not None:

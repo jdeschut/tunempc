@@ -51,7 +51,7 @@ class Sqp(object):
         # default settings
         self.__options = {
             'regularization': 'reduced',
-            'regularization_tol': 1e-6,
+            'regularization_tol': 1e-8,
             'tol': 1e-6,
             'lam_tresh': 1e-8,
             'max_ls_iter': 300,

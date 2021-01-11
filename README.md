@@ -95,7 +95,7 @@ acados_ocp_solver, _ = ctrl.generate(ode) # generate solver
 u0 = ctrl.step_acados(x0) # solver can be called through python interface
 ```
 
-For a more complete overview of the available functionality, have a look at the different application [examples](https://github.com/jdeschut/tunempc/examples).
+For a more complete overview of the available functionality, have a look at the different application [examples](https://github.com/jdeschut/tunempc/tree/master/examples).
 
 ## Acknowledgments
 

@@ -609,8 +609,8 @@ class Pmpc(object):
             if n_in == 4: # DAE flag
                 ocp.cost.Vz = np.zeros((ny,nz))
 
-        if 'custom_hessian' in opts:
-            self.__custom_hessian = opts['custom_hessian']
+        # if 'custom_hessian' in opts:
+        #     self.__custom_hessian = opts['custom_hessian']
 
         # initial condition
         ocp.constraints.x0 = xref
@@ -972,8 +972,8 @@ class Pmpc(object):
                 self.__acados_ocp_solver.cost_set(i, 'W', self.__Href[idx][0])
 
             # set custom hessians if applicable
-            if self.__acados_ocp_solver.acados_ocp.solver_options.ext_cost_custom_hessian:
-                self.__acados_ocp_solver.cost_set(i, "cost_custom_hess", self.__custom_hessian[idx])
+            # if self.__acados_ocp_solver.acados_ocp.solver_options.ext_cost_custom_hessian:
+            #     self.__acados_ocp_solver.cost_set(i, "cost_custom_hess", self.__custom_hessian[idx])
 
             # update constraint bounds
             if self.__h is not None:

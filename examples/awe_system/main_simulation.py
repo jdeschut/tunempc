@@ -166,8 +166,8 @@ if ACADOS_SIM:
     opts['print_level'] = 1
     opts['sim_method_num_steps'] = 1
     opts['tf'] = Nmpc*user_input['ts']
-    opts['nlp_solver_max_iter'] = 100
-    opts['nlp_solver_step_length'] = 0.8
+    opts['nlp_solver_max_iter'] = 200
+    opts['nlp_solver_step_length'] = 0.3
     opts['nlp_solver_tol_comp'] = 1e-5
     opts['nlp_solver_tol_eq'] = 1e-5
     opts['nlp_solver_tol_ineq'] = 1e-5

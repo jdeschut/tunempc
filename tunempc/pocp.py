@@ -103,9 +103,18 @@ class Pocp(object):
         # prepare dynamics and path constraints entry
         constraints_entry = (ct.entry('dyn', shape = (self.__nx,), repeat = self.__N),)
         if self.__h is not None:
-            constraints_entry += (ct.entry('h', shape = self.__h.size1_out(0), repeat = self.__N),)
+            if type(self.__h) is not list:
+                constraints_entry += (ct.entry('h', shape = self.__h.size1_out(0), repeat = self.__N),)
+            else:
+                # TODO: allow for changing dimension of h
+                constraints_entry += (ct.entry('h', shape = self.__h[0].size1_out(0), repeat = self.__N),)
+
         if self.__gnl is not None:
-            constraints_entry += (ct.entry('g', shape = self.__gnl.size1_out(0), repeat = self.__N),)
+            if type(self.__gnl) is not list:
+                constraints_entry += (ct.entry('g', shape = self.__gnl.size1_out(0), repeat = self.__N),)
+            else:
+                # TODO: allow for changing dimension of g
+                constraints_entry += (ct.entry('g', shape = self.__gnl[0].size1_out(0), repeat = self.__N),)
 
         # create general constraints structure
         g_struct = ct.struct_symMX([
@@ -118,7 +127,10 @@ class Pocp(object):
         map_args['p']  = ct.horzcat(*w['u'])
 
         # evaluate function dynamics
-        F_constr = ct.horzsplit(self.__F.map(self.__N, self.__parallelization)(**map_args)['xf'])
+        if type(self.__F) == list:
+            F_constr = [self.__F[i](x0 = w['x',i], p = w['u',i])['xf'] for i in range(len(self.__F))]
+        else:
+            F_constr = ct.horzsplit(self.__F.map(self.__N, self.__parallelization)(**map_args)['xf'])
 
         # generate constraints
         constr = collections.OrderedDict()
@@ -127,9 +139,15 @@ class Pocp(object):
         if 'us' in self.__vars:
             map_args['us'] = ct.horzcat(*w['us'])
         if self.__h is not None:
-            constr['h'] = ct.horzsplit(self.__h.map(self.__N,self.__parallelization)(*map_args.values()))
+            if type(self.__h) == list:
+                constr['h'] = [self.__h[i](*[[*map_args.values()][j][:,i] for j in range(len(map_args))]) for i in range(len(self.__h))]
+            else:
+                constr['h'] = ct.horzsplit(self.__h.map(self.__N,self.__parallelization)(*map_args.values()))
         if self.__gnl is not None:
-            constr['g'] = ct.horzsplit(self.__gnl.map(self.__N,self.__parallelization)(*map_args.values()))
+            if type(self.__gnl) == list:
+                constr['g'] = [self.__gnl[i](*[[*map_args.values()][j][:,i] for j in range(len(map_args))]) for i in range(len(self.__gnl))]
+            else:
+                constr['g'] = ct.horzsplit(self.__gnl.map(self.__N,self.__parallelization)(*map_args.values()))
 
         # interleaving of constraints
         repeated_constr = list(itertools.chain.from_iterable(zip(*constr.values())))
@@ -145,8 +163,11 @@ class Pocp(object):
             self.__ubg['h',:] = np.inf
 
         # nlp cost
-        cost_map_fun = self.__cost.map(self.__N,self.__parallelization)
-        f = ca.sum2(cost_map_fun(map_args['x0'], map_args['p']))
+        if type(self.__cost) == list:
+            f = sum([self.__cost[k](w['x',k], w['u',k]) for k in range(self.__N)])
+        else:
+            cost_map_fun = self.__cost.map(self.__N,self.__parallelization)
+            f = ca.sum2(cost_map_fun(map_args['x0'], map_args['p']))
 
         # add phase fixing cost
         self.__construct_phase_fixing_cost()
@@ -285,11 +306,17 @@ class Pocp(object):
             # compute gradient of constraints
             mu_s  = lam_g['h']
             S['C']  = np.split(self.__jac_h(*args).full(), self.__N, axis = 1)
-            S['e'] =  np.split(self.__h(*args).full(), self.__N, axis = 1)
+            if type(self.__h) != list:
+                S['e'] =  np.split(self.__h(*args).full(), self.__N, axis = 1)
+            else:
+                S['e'] = [self.__h[k](*[args[j][:,k] for j in range(len(args))]) for k in range(self.__N)]
             if 'g' in lam_g.keys():
                 lam_s = lam_g['g']
                 S['G']  = np.split(self.__jac_g(*args).full(), self.__N, axis = 1)
-                S['r'] =  np.split(self.__gnl(*args).full(), self.__N, axis = 1)
+                if type(self.__gnl) == list:
+                    S['r'] = [self.__gnl[k](*[args[j][:,k] for j in range(len(args))]) for k in range(self.__N)]
+                else:
+                    S['r'] =  np.split(self.__gnl(*args).full(), self.__N, axis = 1)
             else:
                 S['G']  = None
                 S['r'] =  None
@@ -326,16 +353,6 @@ class Pocp(object):
             M += self.__ns
         S['H'] = [H[i*M:(i+1)*M,i*M:(i+1)*M] for i in range(self.__N)]
 
-        # add slack regularization
-        # if 'us' in self.__vars:
-        #     for k in range(self.__N):
-        #         Hlag[k][-self.__ns:,-self.__ns:] += self.__reg_slack*np.eye(self.__ns)
-        # Hlag = np.split(self.__hess_lag(*map_args.values()).full(), self.__N, axis = 1)
-
-        # # add phase fix contribution
-        # if self.__N > 1:
-        #     Hlag[0] += self.__hess_phase_fix(self.__alpha, self.__x0star, wsol['x',0])
-
         # compute cost function gradient
         if self.__h is not None:
             S['q'] = [- ca.mtimes(lam_g['h',i].T,S['C'][i]) for i in range(self.__N)]
@@ -361,63 +378,60 @@ class Pocp(object):
             uhat = u
 
         # dynamics sensitivities
-        x_next = self.__F(x0 = x, p = u)['xf'] # symbolic integrator evaluation
-
-        self.__jac_Fx = ca.Function('jac_Fx',[x,u],[ca.jacobian(x_next,x)]).map(self.__N)
-        self.__jac_Fu = ca.Function('jac_Fu',[x,u],[ca.jacobian(x_next,uhat)]).map(self.__N)
-
-        self.__hess_F = []
-        for i in range(nx):
-            self.__hess_F.append(
-                ca.Function('hess_F_'+str(i),[x,u],[ca.hessian(x_next[i],wk)[0]])
-                )
-
-        # cost sensitivities
-        obj = self.__cost(x,u) # symbolic cost evaluation
-
-        self.__jac_cost  = ca.Function('q',[x,u],[ca.jacobian(obj, wk)]).map(self.__N)
-        hess_cost = ca.Function('hess_cost',[x,u],[ca.hessian(obj, wk)[0]])
-        self.__hess_cost = hess_cost.map(self.__N)
-        
-        # phase fixing sensitivities
-        alpha  = ca.MX.sym('alpha')
-        x0star = ca.MX.sym('x0star', self.__nx, 1)
-        phase_fix = self.__phase_fix_fun(alpha, x0star, x)
-        self.__jac_phase_fix = ca.Function('jac_phase_fix',[alpha, x0star, x], [ca.jacobian(phase_fix,wk)])
-        self.__hess_phase_fix = ca.Function('hess_phase_fix',[alpha, x0star, x], [ca.hessian(phase_fix,wk)[0]])
+        if type(self.__F) != list:
+            x_next = self.__F(x0 = x, p = u)['xf'] # symbolic integrator evaluation
+            self.__jac_Fx = ca.Function('jac_Fx',[x,u],[ca.jacobian(x_next,x)]).map(self.__N)
+            self.__jac_Fu = ca.Function('jac_Fu',[x,u],[ca.jacobian(x_next,uhat)]).map(self.__N)
+        else:
+            x_map  = ca.MX.sym('x_map', self.__nx, self.__N)
+            u_map  = ca.MX.sym('u_map', self.__nu, self.__N)
+            x_next = [self.__F[k](x0 = x_map[:,k], p = u_map[:,k])['xf'] for k in range(self.__N)]
+            jac_Fx = [ca.jacobian(x_next[k],x_map)[:,k*self.__nx:(k+1)*self.__nx] for k in range(self.__N)]
+            jac_Fu = [ca.jacobian(x_next[k],u_map)[:,k*self.__nu:(k+1)*self.__nu] for k in range(self.__N)]
+            if 'us' in self.__vars:
+                jac_Fu = [ct.horzcat(jac_Fu[k], ca.MX.zeros(self.__nx, self.__ns)) for k in range(self.__N)]
+            self.__jac_Fx = ca.Function('jac_Fx',[x_map,u_map],[ct.horzcat(*jac_Fx)])
+            self.__jac_Fu = ca.Function('jac_Fu',[x_map,u_map],[ct.horzcat(*jac_Fu)])
 
         # constraints sensitivities
         if self.__h is not None:
-            if 'us' in self.__vars:
-                constr = self.__h(x,u,us) # symbolic constraint evaluation
-                self.__jac_h = ca.Function('jac_h',[x,u,us], [ca.jacobian(constr,wk)]).map(self.__N)
-
+            if type(self.__h) != list:
+                if 'us' in self.__vars:
+                    constr = self.__h(x,u,us) # symbolic constraint evaluation
+                    self.__jac_h = ca.Function('jac_h',[x,u,us], [ca.jacobian(constr,wk)]).map(self.__N)
+                else:
+                    constr = self.__h(x,u)
+                    self.__jac_h = ca.Function('jac_h',[x,u], [ca.jacobian(constr,wk)]).map(self.__N)
             else:
-                constr = self.__h(x,u)
-                self.__jac_h = ca.Function('jac_h',[x,u], [ca.jacobian(constr,wk)]).map(self.__N)
+                x_map  = ca.MX.sym('x_map', self.__nx, self.__N)
+                u_map  = ca.MX.sym('u_map', self.__nu, self.__N)
+                if 'us' in self.__vars:
+                    us_map = ca.MX.sym('us_map', self.__ns, self.__N)
+                    constr = [self.__h[k](x_map[:,k],u_map[:,k],us_map[:,k]) for k in range(self.__N)]
+                    jac_hx  = [ca.jacobian(constr[k],x_map)[:,k*self.__nx:(k+1)*self.__nx] for k in range(self.__N)]
+                    jac_hu  = [ca.jacobian(constr[k],u_map)[:,k*self.__nu:(k+1)*self.__nu] for k in range(self.__N)]
+                    jac_hus = [ca.jacobian(constr[k],us_map)[:,k*self.__ns:(k+1)*self.__ns] for k in range(self.__N)]
+                    jac_h   = [ct.horzcat(jac_hx[k], jac_hu[k], jac_hus[k]) for k in range(self.__N)]
+                    self.__jac_h = ca.Function('jac_h', [x_map, u_map, us_map], [ct.horzcat(*jac_h)])
+                else:
+                    constr = [self.__h[k](x_map[:,k],u_map[:,k]) for k in range(self.__N)]
+                    jac_hx  = [ca.jacobian(constr[k],x_map)[:,k*self.__nx:(k+1)*self.__nx] for k in range(self.__N)]
+                    jac_hu  = [ca.jacobian(constr[k],u_map)[:,k*self.__nu:(k+1)*self.__nu] for k in range(self.__N)]
+                    jac_h   = [ct.horzcat(jac_hx[k], jac_hu[k]) for k in range(self.__N)]
+                    self.__jac_h = ca.Function('jac_h', [x_map, u_map], [ct.horzcat(*jac_h)])
 
         if self.__gnl is not None:
-            constr = self.__gnl(x,u,us)
-            self.__jac_g = ca.Function('jac_g',[x,u,us], [ca.jacobian(constr,wk)]).map(self.__N)
-            self.__hess_g = []
-            for i in range(self.__ns):
-                self.__hess_g.append(
-                    ca.Function('hess_g_'+str(i),[x,u,us],[ca.hessian(constr[i],wk)[0]])
-                )
+            if type(self.__gnl) == list:  
+                constr  = [self.__gnl[k](x_map[:,k],u_map[:,k],us_map[:,k]) for k in range(self.__N)]
+                jac_gx  = [ca.jacobian(constr[k],x_map)[:,k*self.__nx:(k+1)*self.__nx] for k in range(self.__N)]
+                jac_gu  = [ca.jacobian(constr[k],u_map)[:,k*self.__nu:(k+1)*self.__nu] for k in range(self.__N)]
+                jac_gus = [ca.jacobian(constr[k],us_map)[:,k*self.__ns:(k+1)*self.__ns] for k in range(self.__N)]
+                jac_g   = [ct.horzcat(jac_gx[k], jac_gu[k], jac_gus[k]) for k in range(self.__N)]
+                self.__jac_g = ca.Function('jac_g', [x_map, u_map, us_map], [ct.horzcat(*jac_g)])
+            else:
+                constr = self.__gnl(x,u,us)
+                self.__jac_g = ca.Function('jac_g',[x,u,us], [ca.jacobian(constr,wk)]).map(self.__N)
 
-        # hessian of the lagrangian
-        hess_lag = hess_cost(x,u)
-        lam_g = ct.MX.sym('lam_g',nx)
-        hess_lag += sum([lam_g[i]*self.__hess_F[i](x,u) for i in range(nx)])
-        lag_args = [x,u,lam_g]
-
-        if 'us' in self.__vars:
-            lam_s = ct.MX.sym('lam_s',self.__ns)
-            hess_lag += sum([lam_s[i]*self.__hess_g[i](x,u,us) for i in range(self.__ns)])
-            lag_args += [us,lam_s]
-            hess_lag += ca.hessian(0.5*self.__reg_slack*ct.mtimes(us.T,us),wk)[0]
-
-        self.__hess_lag = ca.Function('hess_lag_fun', [*lag_args], [hess_lag]).map(self.__N)
 
         return None
 

@@ -37,8 +37,12 @@ def input_formatting(sys):
     # TODO: perform some tests?
 
     # system dimensions
-    nx = sys['f'].size1_in(0)
-    nu = sys['f'].size1_in(1)
+    if type(sys['f']) == list:
+        fsize = sys['f'][0]
+    else:
+        fsize = sys['f'] 
+    nx = fsize.size1_in(0)
+    nu = fsize.size1_in(1)
     sys['vars'] = collections.OrderedDict()
     sys['vars']['x'] = ca.MX.sym('x',nx)
     sys['vars']['u'] = ca.MX.sym('u',nu)
@@ -47,49 +51,72 @@ def input_formatting(sys):
     if 'h' in sys:
 
         # detect and sort out nonlinear inequalities
-        g, sys['h'] = detect_nonlinear_inequalities(sys['h'])
+        sys['g'], sys['h'] = detect_nonlinear_inequalities(sys['h'])
 
-        if g is not None:
-
-            # store nonlinear equalities
-            sys['g'] = g
-
+        if sys['g'].count(None) == len(sys['g']):
+            del(sys['g'])
+        else:
             # add slacks to system variables
-            ns = sys['g'].size1_in(2)
+            sys['vars']['us'] = []
+            for k in range(len(sys['g'])):
+                if sys['g'][k] is not None:
+                    ns = sys['g'][k].size1_in(2)
+                else:
+                    ns = 0
+
+            # TODO: allow for varying dimension of g    
             sys['vars']['us'] = ca.MX.sym('us',ns)
+
+        # unpack lists for len == 1
+        if len(sys['h']) == 1:
+            sys['h'] = sys['h'][0]
+            if 'g' in sys:
+                sys['g'] = sys['g'][0]
+                sys['vars']['us'] = sys['vars']['us'][0]
 
     return sys
 
 def detect_nonlinear_inequalities(h):
 
-    x = ca.MX.sym('x', h.size1_in(0))
-    u = ca.MX.sym('u', h.size1_in(1))
-    h_expr = h(x,u)
+    # make constraints "time-varying"
+    if type(h) is not list:
+        h = [h]
+    
+    # initialize update inequality list
+    h_new = []
+    g_new = []
 
-    # sort constraints according to (non-)linearity
-    h_nlin = []
-    h_lin  = []
-    for k in range(h_expr.shape[0]):
-        if True in ca.which_depends(h_expr[k],ca.vertcat(x,u),2):
-            h_nlin.append(h_expr[k])
+    # iterate over constraints
+    for k in range(len(h)):
+        x = ca.MX.sym('x', h[k].size1_in(0))
+        u = ca.MX.sym('u', h[k].size1_in(1))
+        h_expr = h[k](x,u)
+
+        # sort constraints according to (non-)linearity
+        h_nlin = []
+        h_lin  = []
+        for i in range(h_expr.shape[0]):
+            if True in ca.which_depends(h_expr[i],ca.vertcat(x,u),2):
+                h_nlin.append(h_expr[i])
+            else:
+                h_lin.append(h_expr[i])
+
+        # update control vector (add slacks for nonlinear inequalities)
+        if len(h_nlin) > 0:
+
+            # function for nonlinear slacked inequalities
+            s = ca.MX.sym('s', len(h_nlin))
+            g_new.append(ca.Function('g',[x,u,s], [ca.vertcat(*h_nlin) - s]))
+
+            # function for linear inequalities
+            h_lin.append(s) # slacks > 0
+            h_new.append(ca.Function('h', [x,u,s], [ca.vertcat(*h_lin)]))
+
         else:
-            h_lin.append(h_expr[k])
+            g_new.append(None)
+            h_new.append(h[k])
 
-    # update control vector (add slacks for nonlinear inequalities)
-    if len(h_nlin) > 0:
-
-        # function for nonlinear slacked inequalities
-        s = ca.MX.sym('s', len(h_nlin))
-        g = ca.Function('g',[x,u,s], [ca.vertcat(*h_nlin) - s])
-
-        # function for linear inequalities
-        h_lin.append(s) # slacks > 0
-        h = ca.Function('h', [x,u,s], [ca.vertcat(*h_lin)])
-
-    else:
-        g = None
-
-    return g, h
+    return g_new, h_new
 
 def add_mpc_slacks(sys, lam_g, active_set, slack_flag = 'active'):
 

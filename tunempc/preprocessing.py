@@ -72,7 +72,6 @@ def input_formatting(sys):
             sys['h'] = sys['h'][0]
             if 'g' in sys:
                 sys['g'] = sys['g'][0]
-                sys['vars']['us'] = sys['vars']['us'][0]
 
     return sys
 

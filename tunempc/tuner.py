@@ -38,7 +38,7 @@ from tunempc.logger import Logger
 
 class Tuner(object):
 
-    def __init__(self, f, l, h = None, p = 1):
+    def __init__(self, f, l, h = None, p = 1, opts = {'solver':{}}):
 
         """ Constructor 
         """
@@ -79,7 +79,12 @@ class Tuner(object):
 
 
         self.__l = l
-        self.__ocp = pocp.Pocp(sys = sys, cost = l, period = p)
+        self.__ocp = pocp.Pocp(
+            sys = sys,
+            cost = l,
+            period = p,
+            solver_opts = opts['solver'],
+            )
 
         Logger.logger.info('')
         Logger.logger.info('Tuner instance created:')

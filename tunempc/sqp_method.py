@@ -51,13 +51,14 @@ class Sqp(object):
         # default settings
         self.__options = {
             'regularization': 'reduced',
-            'regularization_tol': 1e-8,
+            'regularization_tol': 1e-6,
             'tol': 1e-6,
             'lam_tresh': 1e-8,
             'max_ls_iter': 300,
             'ls_step_factor': 0.8,
             'hessian_approximation': 'exact',
-            'max_iter': 2000
+            'max_iter': 2000,
+            'qp_solver': 'qpoases'
         }
 
         # overwrite default
@@ -108,28 +109,57 @@ class Sqp(object):
             'a': jacg.sparsity()
         }
 
-        # qp options
-        opts = {
-            'enableEqualities':True,
-            'printLevel':'none',
-            'sparse': True,
-            'enableInertiaCorrection':True,
-            'enableCholeskyRefactorisation':1,
-            # 'enableRegularisation': True,
-            # 'epsRegularisation': 1e-6
-            # 'enableFlippingBounds':True
-            # 'enableFarBounds': False,
-            # 'enableFlippingBounds': True,
-            # 'epsFlipping': 1e-8,
-            # 'initialStatusBounds': 'inactive',
-        }
+        if self.__options['qp_solver'] == 'qpoases':
+            
+            #qp options
+            opts = {
+                'enableEqualities':True,
+                'printLevel':'high',
+                'sparse': True,
+                'enableFullLITests': True,
+                'numRefinementSteps': 2,
+                'enableInertiaCorrection':True,
+                'enableCholeskyRefactorisation':1,
+                'enableRegularisation': True,
+                'enableNZCTests': True,
+                'enableDriftCorrection': True,
+                'numRegularisationSteps': 2,
+                'epsRegularisation': 1e-8,
+                # 'enableFlippingBounds':True,
+            #     # 'enableFarBounds': False,
+            #     # 'enableFlippingBounds': True,
+                # 'epsFlipping': 1e-8
+                # 'initialStatusBounds': 'inactive'
+            }
 
-        self.__solver = ca.conic(
-            'qpsol',
-            'qpoases',
-            qp,
-            opts
-        )
+            self.__solver = ca.conic(
+                'qpsol',
+                'qpoases',
+                qp,
+                opts
+            )
+
+        elif self.__options['qp_solver'] == 'ipopt':
+
+            # ipopt options
+            opts = {}
+            opts['nlpsol'] = 'ipopt'
+            opts['nlpsol_options'] = {}
+            # opts['nlpsol_options']['ipopt.tol'] = 1e-9
+            # opts['nlpsol_options']['ipopt.tiny_step_tol'] = 1e-20
+            opts['nlpsol_options']['ipopt.hessian_constant'] = 'yes'
+            opts['nlpsol_options']['ipopt.jac_c_constant'] = 'yes'
+            opts['nlpsol_options']['ipopt.jac_d_constant'] = 'yes'
+            opts['nlpsol_options']['ipopt.accept_every_trial_step'] = 'yes'
+            # opts['nlpsol_options']['ipopt.mu_init'] = 1e-3
+            opts['nlpsol_options']['ipopt.linear_solver'] = 'ma57'
+
+            self.__solver = ca.conic(
+                'qpsol',
+                'nlpsol',
+                qp,
+                opts
+            )
 
         return None
 
@@ -205,14 +235,20 @@ class Sqp(object):
         nAC += len([k for k in as_idx if k not in self.__as_idx_init])
 
         # save stats
-        info = self.__solver.stats()
+        if self.__options['qp_solver'] == 'qpoases':
+            info = self.__solver.stats()
+            t_wall_total = info['t_wall_solver']
+        elif self.__options['qp_solver'] == 'ipopt':
+            info = self.__solver.stats()['solver_stats'] # IPOPT as QP solver
+            t_wall_total = info['t_wall_total']
+
         self.__stats = {
             'x': w0,
             'lam_g': lam_g0,
             'p0': p0,
             'iter_count': iter,
             'f': self.__f_fun(w0,p0),
-            't_wall_total': info['t_wall_solver'],
+            't_wall_total': t_wall_total,
             'return_status': info['return_status'],
             'nAC': nAC,
             'nAS': len(as_idx)
@@ -431,3 +467,7 @@ class Sqp(object):
     @property
     def stats(self):
         return self.__stats
+
+    @property
+    def H_fun(self):
+        return self.__H_fun

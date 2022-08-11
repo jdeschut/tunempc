@@ -221,7 +221,7 @@ class Sqp(object):
         H = self.__H_fun(w0,p0,lam_g0)
 
         # check if reduced hessian is PD
-        jacg_active, as_idx = self.__active_constraints_jacobian(w0,p0,lam_g0)
+        jacg_active, as_idx = self.__active_constraints_jacobian(w0,p0,lam_g0, ineq = True)
         Z = null_space(jacg_active)
         Hred = ct.mtimes(ct.mtimes(Z.T, H),Z)
 
@@ -294,14 +294,14 @@ class Sqp(object):
             self.__ls_filter = np.array([[ f0, infeas ]])
             self.__alpha = 0.0
             self.__reg = 0.0
-            _, self.__as_idx_init = self.__active_constraints_jacobian(w0,p0,lam_g0)
+            _, self.__as_idx_init = self.__active_constraints_jacobian(w0,p0,lam_g0, ineq = True)
 
         # print stats
         if k%10 == 0:
             Logger.logger.debug('iter\tf\t\tstep\t\tinf_du\t\tinf_pr\t\talpha\t\treg')
         Logger.logger.debug('{:3d}\t{:.4e}\t{:.4e}\t{:.4e}\t{:.4e}\t{:.2e}\t{:.2e}'.format(
             k,
-            self.__ls_filter[-1,0],
+            self.__ls_filter[-1,0].full()[0][0],
             np.linalg.norm(dw),
             dual_infeas,
             self.__ls_filter[-1,1],
@@ -356,7 +356,7 @@ class Sqp(object):
                 break
 
         self.__alpha = alpha
-        self.__ls_filter = np.append( self.__ls_filter, np.array([[ f0, infeas ]]), axis=0 )
+        self.__ls_filter = np.append( self.__ls_filter, np.array([[ f0, infeas ]]), axis=0)
 
         return alpha*dw
 
@@ -371,7 +371,7 @@ class Sqp(object):
         if self.__options['regularization']  == 'reduced':
 
             # active constraints jacobian
-            jacg_active, _ = self.__active_constraints_jacobian(w0,p0,lam_g)
+            jacg_active, _ = self.__active_constraints_jacobian(w0,p0,lam_g, ineq = False)
 
             # compute reduced hessian
             Z   = null_space(jacg_active)
@@ -433,12 +433,18 @@ class Sqp(object):
             # make sure that the Hessian is symmetric
             H = (H.real + H.real.T)/2.0
 
+            eva_r, evec = eig(H)
+            for e in eva_r:
+                if e < tol/1e2:
+                    print('Regularization of full Hessian failed. Eigenvalue: {}'.format(e))
+
+
         else:
             self.__reg = 0.0
 
         return H
 
-    def __active_constraints_jacobian(self, w0, p0, lam_g):
+    def __active_constraints_jacobian(self, w0, p0, lam_g, ineq = False):
 
         # evaluate constraints jacobian
         jacg = self.__jacg_fun(w0,p0).full()
@@ -453,10 +459,11 @@ class Sqp(object):
         # inequality constraints
         ineq_idx = [i for i, e in enumerate(bounds) if e != 0]
         as_idx = []
-        for i in ineq_idx:
-            if lam_g[i] != 0:
-                jacg_active = np.append(jacg_active,[jacg[i,:]], axis = 0)
-                as_idx.append(i)
+        if ineq:
+            for i in ineq_idx:
+                if lam_g[i] != 0:
+                    jacg_active = np.append(jacg_active,[jacg[i,:]], axis = 0)
+                    as_idx.append(i)
 
         return jacg_active, as_idx
 

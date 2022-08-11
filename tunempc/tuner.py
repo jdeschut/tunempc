@@ -126,7 +126,7 @@ class Tuner(object):
         Logger.logger.info(60*'=')
         Logger.logger.info('')
 
-        self.__w_sol = self.__ocp.solve(w0=w_init)
+        self.__w_sol, self.__lam_g = self.__ocp.solve(w0=w_init, lam_g0 = lam0)
         self.__S     = self.__ocp.get_sensitivities()
         self.__sys['S'] = self.__S
 
@@ -268,3 +268,8 @@ class Tuner(object):
     def S(self):
         "Sensitivity information"
         return self.__S
+
+    @property
+    def lam_g(self):
+        "Optimal periodic multipliers"
+        return self.__lam_g

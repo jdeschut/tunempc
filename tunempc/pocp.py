@@ -35,7 +35,7 @@ from tunempc.logger import Logger
 
 class Pocp(object):
 
-    def __init__(self, sys, cost, period = 1):
+    def __init__(self, sys, cost, period = 1, solver_opts = {}):
 
         """ Constructor
         """
@@ -72,10 +72,10 @@ class Pocp(object):
         self.__parallelization = 'openmp'
         self.__mu_tresh = 1e-15 # treshold for active constraint detection
         self.__reg_slack = 1e-4 # slack regularization
-        self.__construct_solver()
+        self.__construct_solver(solver_opts)
         self.__construct_sensitivity_funcs()
 
-    def __construct_solver(self):
+    def __construct_solver(self, solver_opts):
 
         """ Construct periodic NLP and solver.
         """
@@ -169,6 +169,12 @@ class Pocp(object):
             cost_map_fun = self.__cost.map(self.__N,self.__parallelization)
             f = ca.sum2(cost_map_fun(map_args['x0'], map_args['p']))
 
+        if 'g' in self.g.keys():
+            f += 1e0*sum([ca.mtimes(self.g['g',k].T, self.g['g',k]) for k in range(self.__N)])
+
+        if 'v' in w.keys():
+            f += 1e-8*ca.mtimes(w['v'].T, w['v'])
+
         # add phase fixing cost
         self.__construct_phase_fixing_cost()
         alpha = ca.MX.sym('alpha')
@@ -183,26 +189,31 @@ class Pocp(object):
         p = ca.vertcat(alpha, x0star)
         self.__w = w
         self.__g_fun = ca.Function('g_fun',[w,p],[self.__g])
+        self.__jac_g_fun = ca.Function('g_fun',[w,p],[ca.jacobian(self.__g,w.cat)])
 
         # create IP-solver
         prob = {'f': f, 'g': self.__g, 'x': w, 'p': p}
         opts = {'ipopt':{'linear_solver':'ma57'},'expand':False}
+        for key, value in solver_opts.items():
+            if key == 'ipopt':
+                for ip_key, ip_value in solver_opts[key].items():
+                    opts[key][ip_key] = ip_value
+            elif key != 'sqp_opts':
+                opts[key] = value
         if Logger.logger.getEffectiveLevel() > 10:
             opts['ipopt']['print_level'] = 0
             opts['print_time'] = 0
             opts['ipopt']['sb'] = 'yes'
-
         self.__solver = ca.nlpsol('solver', 'ipopt', prob, opts)
 
         # create SQP-solver
         prob['lbg'] = self.__lbg
         prob['ubg'] = self.__ubg
-        self.__sqp_solver = sqp_method.Sqp(prob)
-
+        self.__sqp_solver = sqp_method.Sqp(prob, solver_opts['sqp_opts'])
 
         return None
 
-    def solve(self, w0 = None):
+    def solve(self, w0 = None, lam_g0 = None):
 
         """
         Solve periodic OCP

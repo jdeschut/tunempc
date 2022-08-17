@@ -222,6 +222,8 @@ class Pocp(object):
         # initialize
         if w0 is None:
             w0 = self.__w(0.0)
+        if lam_g0 is None:
+            lam_g0 = 0.0
         
         # no phase fix cost
         self.__alpha = 0.0
@@ -232,42 +234,55 @@ class Pocp(object):
             )
 
         # solve OCP
-        Logger.logger.info('IPOPT pre-solve...')
-        self.__sol = self.__solver(
-            x0  = w0, 
-            lbx = self.__lbw, 
-            ubx = self.__ubw, 
-            lbg = self.__lbg, 
-            ubg = self.__ubg,
-            p   = p
-           )
+        self.__ipopt_presolve = True
+        if self.__ipopt_presolve:
+
+            Logger.logger.info('IPOPT pre-solve...')
+            self.__sol = self.__solver(
+                x0  = w0, 
+                lbx = self.__lbw,
+                ubx = self.__ubw,
+                lbg = self.__lbg,
+                ubg = self.__ubg,
+                p   = p,
+                lam_g0 = lam_g0
+            )
+            wsol = self.__w(self.__sol['x'])
+            lam_gsol = self.__g(self.__sol['lam_g'])
+        else:
+            wsol = self.__w(w0)
+            lam_gsol = self.__g(lam_g0)
 
         # fix phase
         if self.__N > 1:
-            # prepare
-            wsol = self.__w(self.__sol['x'])
+
             self.__alpha = 0.1
             self.__x0star = wsol['x',0]
             p = ca.vertcat(
                     self.__alpha,
                     self.__x0star
                 )
-            # solve
-            Logger.logger.info('IPOPT pre-solve with phase-fix...')
-            self.__sol = self.__solver(
-                x0  = self.__sol['x'],
-                lbx = self.__lbw,
-                ubx = self.__ubw,
-                lbg = self.__lbg,
-                ubg = self.__ubg,
-                p   = p
-           )
+            if self.__ipopt_presolve:
+                # solve
+                Logger.logger.info('IPOPT pre-solve with phase-fix...')
+                self.__sol = self.__solver(
+                    x0  = self.__sol['x'],
+                    lbx = self.__lbw,
+                    ubx = self.__ubw,
+                    lbg = self.__lbg,
+                    ubg = self.__ubg,
+                    p   = p,
+                    lam_g0 = lam_gsol
+                )
+                wsol = self.__w(self.__sol['x'])
+                lam_gsol = self.__g(self.__sol['lam_g'])
 
         # solve with SQP (with active set QP solver) to retrieve active set
         Logger.logger.info('Solve with active-set based SQP method...')
-        self.__sol = self.__sqp_solver.solve(self.__sol['x'], p, self.__sol['lam_g'])
 
-        return self.__w(self.__sol['x'])
+        self.__sol = self.__sqp_solver.solve(wsol.cat, p, lam_gsol)
+
+        return self.__w(self.__sol['x']), self.__g(self.__sol['lam_g'])
 
     def get_sensitivities(self):
 

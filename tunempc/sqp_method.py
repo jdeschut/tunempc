@@ -51,7 +51,7 @@ class Sqp(object):
         # default settings
         self.__options = {
             'regularization': 'reduced',
-            'regularization_tol': 1e-6,
+            'regularization_tol': 1e-8,
             'tol': 1e-6,
             'lam_tresh': 1e-8,
             'max_ls_iter': 300,
@@ -267,11 +267,18 @@ class Sqp(object):
         lam_g0 = copy.deepcopy(lam_g0)
 
         # filter multipliers with treshold value
-        for i in range(lam_g0.shape[0]):
-            if abs(lam_g0[i]) < self.__options['lam_tresh']:
-                lam_g0[i] = 0.0
-        
-        return lam_g0
+        # for i in range(lam_g0.shape[0]):
+        #     if abs(lam_g0[i]) < self.__options['lam_tresh']:
+        #         lam_g0[i] = 0.0
+        for i in range(len(lam_g0['h',:])):
+            for j in range(lam_g0['h',0].shape[0]):
+                if abs(lam_g0['h',i,j]) < self.__options['lam_tresh']:
+                    lam_g0['h',i,j] = 0.0
+            # for j in range(lam_g0['g',0].shape[0]):
+            #     if abs(lam_g0['g',i,j]) < self.__options['lam_tresh']:
+            #         lam_g0['g',i,j] = 0.0
+         
+        return lam_g0.cat
 
     def __check_convergence(self, w0, p0, lam_g0, dw, k):
 

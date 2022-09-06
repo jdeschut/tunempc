@@ -226,8 +226,10 @@ class Pocp(object):
             lam_g0 = 0.0
         
         # no phase fix cost
-        self.__alpha = 0.0
-        self.__x0star = np.zeros((self.__nx,1))
+        # self.__alpha = 0.0
+        # self.__x0star = np.zeros((self.__nx,1))
+        self.__alpha = 10
+        self.__x0star = self.__w(w0)['x',0]
         p = ca.vertcat(
                 self.__alpha,
                 self.__x0star
@@ -253,29 +255,29 @@ class Pocp(object):
             wsol = self.__w(w0)
             lam_gsol = self.__g(lam_g0)
 
-        # fix phase
-        if self.__N > 1:
+        # # fix phase
+        # if self.__N > 1:
 
-            self.__alpha = 0.1
-            self.__x0star = wsol['x',0]
-            p = ca.vertcat(
-                    self.__alpha,
-                    self.__x0star
-                )
-            if self.__ipopt_presolve:
-                # solve
-                Logger.logger.info('IPOPT pre-solve with phase-fix...')
-                self.__sol = self.__solver(
-                    x0  = self.__sol['x'],
-                    lbx = self.__lbw,
-                    ubx = self.__ubw,
-                    lbg = self.__lbg,
-                    ubg = self.__ubg,
-                    p   = p,
-                    lam_g0 = lam_gsol
-                )
-                wsol = self.__w(self.__sol['x'])
-                lam_gsol = self.__g(self.__sol['lam_g'])
+        #     self.__alpha = 0.1
+        #     self.__x0star = wsol['x',0]
+        #     p = ca.vertcat(
+        #             self.__alpha,
+        #             self.__x0star
+        #         )
+        #     if self.__ipopt_presolve:
+        #         # solve
+        #         Logger.logger.info('IPOPT pre-solve with phase-fix...')
+        #         self.__sol = self.__solver(
+        #             x0  = self.__sol['x'],
+        #             lbx = self.__lbw,
+        #             ubx = self.__ubw,
+        #             lbg = self.__lbg,
+        #             ubg = self.__ubg,
+        #             p   = p,
+        #             lam_g0 = lam_gsol
+        #         )
+        #         wsol = self.__w(self.__sol['x'])
+        #         lam_gsol = self.__g(self.__sol['lam_g'])
 
         # solve with SQP (with active set QP solver) to retrieve active set
         Logger.logger.info('Solve with active-set based SQP method...')

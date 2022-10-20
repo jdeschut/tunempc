@@ -101,7 +101,7 @@ def detect_nonlinear_inequalities(h):
                 h_lin.append(h_expr[i])
 
         # update control vector (add slacks for nonlinear inequalities)
-        if len(h_nlin) > 0:
+        if False: #len(h_nlin) > 0:
 
             # function for nonlinear slacked inequalities
             s = ca.MX.sym('s', len(h_nlin))

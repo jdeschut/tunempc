@@ -193,7 +193,7 @@ class Pocp(object):
 
         # create IP-solver
         prob = {'f': f, 'g': self.__g, 'x': w, 'p': p}
-        opts = {'ipopt':{'linear_solver':'ma57'},'expand':False}
+        opts = {'ipopt':{'linear_solver':'mumps'},'expand':False}
         for key, value in solver_opts.items():
             if key == 'ipopt':
                 for ip_key, ip_value in solver_opts[key].items():
@@ -502,3 +502,8 @@ class Pocp(object):
     def g_fun(self):
         "Constraints function"
         return self.__g_fun
+
+    @property
+    def solver(self):
+        "IPOPT solver"
+        return self.__solver

@@ -124,13 +124,16 @@ class Pocp(object):
         # create symbolic constraint expressions
         map_args = collections.OrderedDict()
         map_args['x0'] = ct.horzcat(*w['x'])
+        map_args['x0'][-1,0] = 0.0
+
         map_args['p']  = ct.horzcat(*w['u'])
 
         # evaluate function dynamics
         if type(self.__F) == list:
             F_constr = [self.__F[i](x0 = w['x',i], p = w['u',i])['xf'] for i in range(len(self.__F))]
         else:
-            F_constr = ct.horzsplit(self.__F.map(self.__N, self.__parallelization)(**map_args)['xf'])
+            Fmap = self.__F.map(self.__N, self.__parallelization)(**map_args)
+            F_constr = ct.horzsplit(Fmap['xf'])
 
         # generate constraints
         constr = collections.OrderedDict()
@@ -142,6 +145,7 @@ class Pocp(object):
             if type(self.__h) == list:
                 constr['h'] = [self.__h[i](*[[*map_args.values()][j][:,i] for j in range(len(map_args))]) for i in range(len(self.__h))]
             else:
+                map_args['x0'] = ct.horzcat(*w['x',:, :-1])
                 constr['h'] = ct.horzsplit(self.__h.map(self.__N,self.__parallelization)(*map_args.values()))
         if self.__gnl is not None:
             if type(self.__gnl) == list:
@@ -166,8 +170,9 @@ class Pocp(object):
         if type(self.__cost) == list:
             f = sum([self.__cost[k](w['x',k], w['u',k]) for k in range(self.__N)])
         else:
-            cost_map_fun = self.__cost.map(self.__N,self.__parallelization)
-            f = ca.sum2(cost_map_fun(map_args['x0'], map_args['p']))
+            # cost_map_fun = self.__cost.map(self.__N,self.__parallelization)
+            # f = ca.sum2(cost_map_fun(map_args['x0'], map_args['p']))
+            f = w['x', 0, -1]
 
         if 'g' in self.g.keys():
             f += 1e0*sum([ca.mtimes(self.g['g',k].T, self.g['g',k]) for k in range(self.__N)])
@@ -226,15 +231,17 @@ class Pocp(object):
             lam_g0 = 0.0
         
         # no phase fix cost
-        # self.__alpha = 0.0
-        # self.__x0star = np.zeros((self.__nx,1))
-        self.__alpha = 10
-        self.__x0star = self.__w(w0)['x',0]
+        self.__alpha = 0.0
+        self.__x0star = np.zeros((self.__nx,1))
+        # self.__alpha = 10
+        # self.__x0star = self.__w(w0)['x',0]
         p = ca.vertcat(
                 self.__alpha,
                 self.__x0star
             )
-
+        self.__lbw['x', 0, 4] = 0
+        self.__ubw['x', 0, 4] = 0
+ 
         # solve OCP
         self.__ipopt_presolve = True
         if self.__ipopt_presolve:
@@ -281,7 +288,7 @@ class Pocp(object):
 
         # solve with SQP (with active set QP solver) to retrieve active set
         Logger.logger.info('Solve with active-set based SQP method...')
-
+        import ipdb; ipdb.set_trace()
         self.__sol = self.__sqp_solver.solve(wsol.cat, p, lam_gsol)
 
         return self.__w(self.__sol['x']), self.__g(self.__sol['lam_g'])
@@ -428,7 +435,7 @@ class Pocp(object):
                     constr = self.__h(x,u,us) # symbolic constraint evaluation
                     self.__jac_h = ca.Function('jac_h',[x,u,us], [ca.jacobian(constr,wk)]).map(self.__N)
                 else:
-                    constr = self.__h(x,u)
+                    constr = self.__h(x[:-1],u)
                     self.__jac_h = ca.Function('jac_h',[x,u], [ca.jacobian(constr,wk)]).map(self.__N)
             else:
                 x_map  = ca.MX.sym('x_map', self.__nx, self.__N)
@@ -442,7 +449,7 @@ class Pocp(object):
                     jac_h   = [ct.horzcat(jac_hx[k], jac_hu[k], jac_hus[k]) for k in range(self.__N)]
                     self.__jac_h = ca.Function('jac_h', [x_map, u_map, us_map], [ct.horzcat(*jac_h)])
                 else:
-                    constr = [self.__h[k](x_map[:,k],u_map[:,k]) for k in range(self.__N)]
+                    constr = [self.__h[k](x_map[:-1,k],u_map[:,k]) for k in range(self.__N)]
                     jac_hx  = [ca.jacobian(constr[k],x_map)[:,k*self.__nx:(k+1)*self.__nx] for k in range(self.__N)]
                     jac_hu  = [ca.jacobian(constr[k],u_map)[:,k*self.__nu:(k+1)*self.__nu] for k in range(self.__N)]
                     jac_h   = [ct.horzcat(jac_hx[k], jac_hu[k]) for k in range(self.__N)]

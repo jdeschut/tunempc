@@ -303,7 +303,9 @@ def setUpModelPicos(A, B, Q, R, N, G = None, C = None, rho = 1e-3, constr = True
     # formulate constraints
     for i in range(period):
         M.add_constraint((HcE[i] - np.eye(nx+nu))/scaling['alpha'] >> 0)
-        M.add_constraint((scaling['beta']*beta * np.eye(nx+nu) - HcE[i])/scaling['alpha'] >> 0)
+        M.add_constraint((scaling['beta']*beta * np.eye(nx+nu) - HcE[i])/scaling['beta'] >> 0)
+        # M.add_constraint((HcE[i] - np.eye(nx+nu)) >> 0)
+        # M.add_constraint((scaling['beta']*beta * np.eye(nx+nu) - HcE[i]) >> 0)
 
     return M
 
@@ -360,6 +362,18 @@ def solveSDP(M, opts):
 
     Logger.logger.info('solving SDP...')
 
+    # mosek_params = {
+    #     # 'MSK_DPAR_INTPNT_CO_TOL_PFEAS': 1e-12,
+    #     # 'MSK_DPAR_INTPNT_CO_TOL_DFEAS': 1e-12,
+    #     # 'MSK_DPAR_INTPNT_CO_TOL_INFEAS': 1e-12,
+    #     # 'MSK_DPAR_INTPNT_CO_TOL_REL_GAP': 1e-11,
+    #     # 'MSK_DPAR_ANA_SOL_INFEAS_TOL': 1e-10,
+    #     # # 'MSK_DPAR_INTPNT_NL_MERIT_BAL': 1e-8,
+    #     # 'MSK_DPAR_INTPNT_TOL_STEP_SIZE': 1e-10,
+    #     # # 'MSK_DPAR_INTPNT_NL_TOL_REL_GAP': 1e-8
+    # }
+
+    # M.solve(solver = opts['solver'], verbose = opts['verbose'], mosek_params = mosek_params)
     M.solve(solver = opts['solver'], verbose = opts['verbose'])
 
     if M.status == 'optimal':
@@ -368,6 +382,8 @@ def solveSDP(M, opts):
         Logger.logger.debug('beta: {}'.format(str((M.variables['beta'].value))))
     else:
         Logger.logger.debug('solution status: {} ...'.format(M.status))
+        Logger.logger.debug('alpha: {}'.format(str(M.variables['alpha'].value)))
+        Logger.logger.debug('beta: {}'.format(str((M.variables['beta'].value))))
 
     return M
 
@@ -389,7 +405,11 @@ def autoScaling(Q, R, N):
     
     # maximum condition number
     max_cond = max_eig/min_eig
-
+    # print(min_eig)
+    # print(max_cond)
+    # min_eig = 1.0125843108219648e-05
+    min_eig = 1e-2
+    max_cond = 492157
     scaling = {
         'alpha': 1/min_eig,
         'beta': max_cond,

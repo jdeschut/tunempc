@@ -284,6 +284,10 @@ class Pocp(object):
         Logger.logger.info('Solve with active-set based SQP method...')
 
         self.__sol = self.__sqp_solver.solve(wsol.cat, p, lam_gsol)
+        self.Hred_eigvals = [
+            self.__sqp_solver.Hred_min_eigval,
+            self.__sqp_solver.Hred_max_eigval,
+            ]
 
         return self.__w(self.__sol['x']), self.__g(self.__sol['lam_g'])
 

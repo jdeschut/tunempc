@@ -134,7 +134,7 @@ class Tuner(object):
         Logger.logger.info('Optimization problem solved.')
         Logger.logger.info('')
 
-        return self.__w_sol
+        return self.__w_sol, self.__lam_g
 
     def convexify(self, rho = 1.0, force = False, solver = 'cvxopt'):
 

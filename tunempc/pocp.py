@@ -194,6 +194,7 @@ class Pocp(object):
         # create IP-solver
         prob = {'f': f, 'g': self.__g, 'x': w, 'p': p}
         opts = {'ipopt':{'linear_solver':'mumps'},'expand':False}
+        solver_opts['sqp_opts'] = {'qpsolver': 'qpoases'}
         for key, value in solver_opts.items():
             if key == 'ipopt':
                 for ip_key, ip_value in solver_opts[key].items():

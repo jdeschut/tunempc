@@ -69,7 +69,7 @@ tuner = tunempc.Tuner(
     h = h,
     p = 1
 )
-wsol = tuner.solve_ocp(w0 = cstr.initial_guess())
+wsol, lam_g = tuner.solve_ocp(w0 = cstr.initial_guess())
 lOpt = cost(wsol['x',0], wsol['u',0])
 Hc   = tuner.convexify()
 S    = tuner.S

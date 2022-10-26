@@ -115,12 +115,12 @@ class Pmpc(object):
             assert tuning != None, 'Provide tuning matrices for tracking MPC!'
 
         # periodicity operator
-        self.__p_operator = self.__options['p_operator']
-        self.__jac_p_operator = ca.Function(
-            'jac_p',
-            [sys['vars']['x']],
-            [ca.jacobian(self.__p_operator(sys['vars']['x']),sys['vars']['x'])]
-        )
+        self.__p_function = self.__options['p_function']
+        # self.__jac_p_operator = ca.Function(
+        #     'jac_p',
+        #     [sys['vars']['x']],
+        #     [ca.jacobian(self.__p_operator(sys['vars']['x']),sys['vars']['x'])]
+        # )
         self.__S = sensitivities
 
         # construct MPC solver
@@ -148,12 +148,16 @@ class Pmpc(object):
 
     def __default_options(self):
 
+        # default periodicity condition
+        xf = ca.MX.sym('xf', self.__nx)
+        p_function = ca.Function('p_function',[self.__vars['x'], xf],[self.__vars['x']-xf])
+        
         # default options
         opts = {
             'hessian_approximation': 'exact',
-            'ipopt_presolve': False,
+            'ipopt_presolve': True,
             'max_iter': 2000,
-            'p_operator': ca.Function('p_operator',[self.__vars['x']],[self.__vars['x']]),
+            'p_function': p_function,
             'slack_flag': 'none'
         }
 
@@ -246,7 +250,7 @@ class Pmpc(object):
             constraints_entry += (ct.entry('h', shape = self.__h.size1_out(0), repeat = self.__N),)
 
         # terminal constraint
-        self.__nx_term = self.__p_operator.size1_out(0)
+        self.__nx_term = self.__p_function.size1_out(0)
 
         # create general constraints structure
         g_struct = ct.struct_symMX([
@@ -278,10 +282,18 @@ class Pmpc(object):
 
         repeated_constr = list(itertools.chain.from_iterable(zip(*constr.values())))
 
-        term_constraint = self.__p_operator(w['x',-1] - xN)
+        R0 = ca.reshape(w['x',0, 9:18],3,3)
+        R0hat = ca.reshape(x0[9:18], 3, 3)
+        Rinit = ca.mtimes(R0.T, R0hat) - ca.DM_eye(3)
+        init_constraint = ct.vertcat(
+            w['x',0,:9] - x0[:9],
+            ca.reshape(Rinit, 9,1),
+            w['x',0, 18:] - x0[18:]
+        )
+        term_constraint = self.__p_function(w['x',-1], xN)
 
         self.__g = g_struct(ca.vertcat(
-            w['x',0] - x0,
+            init_constraint,
             *repeated_constr,
             term_constraint
         ))
@@ -337,6 +349,18 @@ class Pmpc(object):
         # add cost on slacks
         if 'usc' in self.__vars:
             J += ca.sum2(ct.mtimes(self.__scost.T,ct.horzcat(*w['usc'])))
+            J += ct.mtimes(ct.vertcat(*w['usc']).T,ct.vertcat(*w['usc']))
+
+        if self.__type == 'economic':
+            if 'g' in constr.keys():
+                J += 1e-12*ca.mtimes(
+                    ct.vertcat(*constr['g']).T,
+                    ct.vertcat(*constr['g'])
+                ) # to have diagonal entries
+
+        # Terminal cost
+        term_diff = w['x',-1] - xN
+        J += 1e-8*ca.mtimes(term_diff.T, term_diff)
 
         # create solver
         prob = {'f': J, 'g': self.__g, 'x': w, 'p': self.__p}
@@ -345,7 +369,7 @@ class Pmpc(object):
 
         # create IPOPT-solver instance if needed
         if self.__options['ipopt_presolve']:
-            opts = {'ipopt':{'linear_solver':'ma57','print_level':0},'expand':False}
+            opts = {'ipopt':{'linear_solver':'ma57','print_level':5},'expand':False}
             if Logger.logger.getEffectiveLevel() > 10:
                 opts['ipopt']['print_level'] = 0
                 opts['print_time'] = 0
@@ -403,13 +427,14 @@ class Pmpc(object):
             self.__w0 = self.__w(ipopt_sol['x'])
             self.__lam_g0 = self.__g(ipopt_sol['lam_g'])
 
+        sol = ipopt_sol
         # solve NLP
-        sol = self.__sqp_solver.solve(self.__w0.cat, p0.cat, self.__lam_g0.cat)
+        # sol = self.__sqp_solver.solve(self.__w0.cat, p0.cat, self.__lam_g0)
 
         # store solution
         self.__g_sol = self.__g(self.__g_fun(sol['x'], p0))
         self.__w_sol = self.__w(sol['x'])
-        self.__extract_solver_stats()
+        # self.__extract_solver_stats()
 
         # shift reference
         self.__index += 1
@@ -718,53 +743,53 @@ class Pmpc(object):
                         lam_h += [-self.__scost] # TODO not entirely correct
 
                     lamgk['h',j] = ct.vertcat(*lam_h)
-            lamgk['term'] = self.__p_operator(lam_g_ref['dyn',(k+self.__N-1)%self.__Nref])
+            # lamgk['term'] = self.__p_operator(lam_g_ref['dyn',(k+self.__N-1)%self.__Nref])
 
             # adjust dual solution of terminal constraint is projected
-            if self.__nx_term != self.__nx:
+            # if self.__nx_term != self.__nx:
 
-                # find new terminal multiplier
-                A_m = []
-                b_m = []
-                A_factor = ca.DM.eye(self.__nx)
-                for j in range(self.__N):
-                    A_m.append(ct.mtimes(
-                        ct.mtimes(self.__S['B'][(self.__N-j-1)%self.__Nref].T, A_factor),
-                        self.__jac_p_operator(ca.DM.ones(self.__nx,1)).T
-                        )
-                    )
-                    b_m.append(ct.mtimes(
-                        ct.mtimes(self.__S['B'][(self.__N-j-1)%self.__Nref].T, A_factor),
-                        lam_g_ref['dyn',(k+self.__N-1)%self.__Nref]
-                        )
-                    )
-                    A_factor = ct.mtimes(self.__S['A'][(self.__N-j-1)%self.__Nref].T, A_factor)
-                A_m = ct.vertcat(*A_m)
-                b_m = ct.vertcat(*b_m)
-                LI_indeces = [] # indeces of first full rank number linearly independent rows
-                R0 = 0
-                for i in range(A_m.shape[0]):
-                    R = np.linalg.matrix_rank(A_m[LI_indeces+[i],:])
-                    if R > R0:
-                        LI_indeces.append(i)
-                        R0 = R
-                lamgk['term'] = ca.solve(A_m[LI_indeces,:], b_m[LI_indeces,:])
+            #     # find new terminal multiplier
+            #     A_m = []
+            #     b_m = []
+            #     A_factor = ca.DM.eye(self.__nx)
+            #     for j in range(self.__N):
+            #         A_m.append(ct.mtimes(
+            #             ct.mtimes(self.__S['B'][(self.__N-j-1)%self.__Nref].T, A_factor),
+            #             self.__jac_p_operator(ca.DM.ones(self.__nx,1)).T
+            #             )
+            #         )
+            #         b_m.append(ct.mtimes(
+            #             ct.mtimes(self.__S['B'][(self.__N-j-1)%self.__Nref].T, A_factor),
+            #             lam_g_ref['dyn',(k+self.__N-1)%self.__Nref]
+            #             )
+            #         )
+            #         A_factor = ct.mtimes(self.__S['A'][(self.__N-j-1)%self.__Nref].T, A_factor)
+            #     A_m = ct.vertcat(*A_m)
+            #     b_m = ct.vertcat(*b_m)
+            #     LI_indeces = [] # indeces of first full rank number linearly independent rows
+            #     R0 = 0
+            #     for i in range(A_m.shape[0]):
+            #         R = np.linalg.matrix_rank(A_m[LI_indeces+[i],:])
+            #         if R > R0:
+            #             LI_indeces.append(i)
+            #             R0 = R
+            #     lamgk['term'] = ca.solve(A_m[LI_indeces,:], b_m[LI_indeces,:])
 
-                # recursively update dynamics multipliers
-                delta_lam = - lam_g_ref['dyn',(k+self.__N-1)%self.__Nref] + ct.mtimes(
-                    self.__jac_p_operator(ca.DM.ones(self.__nx,1)).T,
-                    lamgk['term']
-                )
-                lamgk['dyn',self.__N-1] += delta_lam
-                for j in range(1,self.__N+1):
-                    delta_lam = ct.mtimes(
-                        self.__S['A'][(self.__N-j)%self.__Nref].T,
-                        delta_lam
-                    )
-                    if j < self.__N:
-                        lamgk['dyn', self.__N-1-j] += delta_lam
-                    else:
-                        lamgk['init'] += -delta_lam
+            #     # recursively update dynamics multipliers
+            #     delta_lam = - lam_g_ref['dyn',(k+self.__N-1)%self.__Nref] + ct.mtimes(
+            #         self.__jac_p_operator(ca.DM.ones(self.__nx,1)).T,
+            #         lamgk['term']
+            #     )
+            #     lamgk['dyn',self.__N-1] += delta_lam
+            #     for j in range(1,self.__N+1):
+            #         delta_lam = ct.mtimes(
+            #             self.__S['A'][(self.__N-j)%self.__Nref].T,
+            #             delta_lam
+            #         )
+            #         if j < self.__N:
+            #             lamgk['dyn', self.__N-1-j] += delta_lam
+            #         else:
+            #             lamgk['init'] += -delta_lam
 
             ref_pr.append(ct.vertcat(*refk))
             ref_du.append(lamgk.cat)
@@ -1113,7 +1138,7 @@ class Pmpc(object):
         for i in range(g_nl.shape[0]):
             if not True in ca.which_depends(g_nl[i],self.__vars['u'],1):
                 self.__gnl_x_idx.append(i)
-        self.__h_us_idx = [idx+self.__h.size1_out(0)-self.__ns for idx in self.__gnl_x_idx]
+        self.__h_us_idx = [idx+self.__h.size1_out(0)-self.__ns - self.__nsc for idx in self.__gnl_x_idx]
 
         return None
 

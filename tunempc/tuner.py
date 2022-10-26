@@ -38,7 +38,7 @@ from tunempc.logger import Logger
 
 class Tuner(object):
 
-    def __init__(self, f, l, h = None, p = 1):
+    def __init__(self, f, l, h = None, p = 1, opts = {'solver':{}}):
 
         """ Constructor 
         """
@@ -79,7 +79,12 @@ class Tuner(object):
 
 
         self.__l = l
-        self.__ocp = pocp.Pocp(sys = sys, cost = l, period = p)
+        self.__ocp = pocp.Pocp(
+            sys = sys,
+            cost = l,
+            period = p,
+            solver_opts = opts['solver'],
+            )
 
         Logger.logger.info('')
         Logger.logger.info('Tuner instance created:')
@@ -121,7 +126,7 @@ class Tuner(object):
         Logger.logger.info(60*'=')
         Logger.logger.info('')
 
-        self.__w_sol = self.__ocp.solve(w0=w_init)
+        self.__w_sol, self.__lam_g = self.__ocp.solve(w0=w_init, lam_g0 = lam0)
         self.__S     = self.__ocp.get_sensitivities()
         self.__sys['S'] = self.__S
 
@@ -129,7 +134,7 @@ class Tuner(object):
         Logger.logger.info('Optimization problem solved.')
         Logger.logger.info('')
 
-        return self.__w_sol
+        return self.__w_sol, self.__lam_g
 
     def convexify(self, rho = 1.0, force = False, solver = 'cvxopt'):
 
@@ -263,3 +268,8 @@ class Tuner(object):
     def S(self):
         "Sensitivity information"
         return self.__S
+
+    @property
+    def lam_g(self):
+        "Optimal periodic multipliers"
+        return self.__lam_g

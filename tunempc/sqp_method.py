@@ -57,7 +57,8 @@ class Sqp(object):
             'max_ls_iter': 300,
             'ls_step_factor': 0.8,
             'hessian_approximation': 'exact',
-            'max_iter': 2000
+            'max_iter': 2000,
+            'qp_solver': 'qpoases'
         }
 
         # overwrite default
@@ -108,28 +109,57 @@ class Sqp(object):
             'a': jacg.sparsity()
         }
 
-        # qp options
-        opts = {
-            'enableEqualities':True,
-            'printLevel':'none',
-            'sparse': True,
-            'enableInertiaCorrection':True,
-            'enableCholeskyRefactorisation':1,
-            # 'enableRegularisation': True,
-            # 'epsRegularisation': 1e-6
-            # 'enableFlippingBounds':True
-            # 'enableFarBounds': False,
-            # 'enableFlippingBounds': True,
-            # 'epsFlipping': 1e-8,
-            # 'initialStatusBounds': 'inactive',
-        }
+        if self.__options['qp_solver'] == 'qpoases':
+            
+            #qp options
+            opts = {
+                'enableEqualities':True,
+                'printLevel':'high',
+                'sparse': True,
+                'enableFullLITests': True,
+                'numRefinementSteps': 2,
+                'enableInertiaCorrection':True,
+                'enableCholeskyRefactorisation':1,
+                'enableRegularisation': True,
+                'enableNZCTests': True,
+                'enableDriftCorrection': True,
+                'numRegularisationSteps': 2,
+                'epsRegularisation': 1e-8,
+                # 'enableFlippingBounds':True,
+            #     # 'enableFarBounds': False,
+            #     # 'enableFlippingBounds': True,
+                # 'epsFlipping': 1e-8
+                # 'initialStatusBounds': 'inactive'
+            }
 
-        self.__solver = ca.conic(
-            'qpsol',
-            'qpoases',
-            qp,
-            opts
-        )
+            self.__solver = ca.conic(
+                'qpsol',
+                'qpoases',
+                qp,
+                opts
+            )
+
+        elif self.__options['qp_solver'] == 'ipopt':
+
+            # ipopt options
+            opts = {}
+            opts['nlpsol'] = 'ipopt'
+            opts['nlpsol_options'] = {}
+            # opts['nlpsol_options']['ipopt.tol'] = 1e-9
+            # opts['nlpsol_options']['ipopt.tiny_step_tol'] = 1e-20
+            opts['nlpsol_options']['ipopt.hessian_constant'] = 'yes'
+            opts['nlpsol_options']['ipopt.jac_c_constant'] = 'yes'
+            opts['nlpsol_options']['ipopt.jac_d_constant'] = 'yes'
+            opts['nlpsol_options']['ipopt.accept_every_trial_step'] = 'yes'
+            # opts['nlpsol_options']['ipopt.mu_init'] = 1e-3
+            opts['nlpsol_options']['ipopt.linear_solver'] = 'ma57'
+
+            self.__solver = ca.conic(
+                'qpsol',
+                'nlpsol',
+                qp,
+                opts
+            )
 
         return None
 
@@ -191,28 +221,38 @@ class Sqp(object):
         H = self.__H_fun(w0,p0,lam_g0)
 
         # check if reduced hessian is PD
-        jacg_active, as_idx = self.__active_constraints_jacobian(w0,p0,lam_g0)
+        jacg_active, as_idx = self.__active_constraints_jacobian(w0,p0,lam_g0, ineq = True)
         Z = null_space(jacg_active)
         Hred = ct.mtimes(ct.mtimes(Z.T, H),Z)
 
         # check eigenvalues of reduced hessian
         if Hred.shape[0] > 0:
-            min_eigval = np.min(np.linalg.eigvals(Hred))
+            eigvals = np.linalg.eigvals(Hred)
+            min_eigval = np.min(eigvals)
+            max_eigval = np.max(eigvals)
             assert min_eigval > self.__options['regularization_tol'], 'Reduced Hessian is not positive definite!'
+            self.Hred_min_eigval = min_eigval
+            self.Hred_max_eigval = max_eigval
 
         # retrieve active set changes w.r.t initial guess
         nAC = len([k for k in self.__as_idx_init if k not in as_idx])
         nAC += len([k for k in as_idx if k not in self.__as_idx_init])
 
         # save stats
-        info = self.__solver.stats()
+        if self.__options['qp_solver'] == 'qpoases':
+            info = self.__solver.stats()
+            t_wall_total = info['t_wall_solver']
+        elif self.__options['qp_solver'] == 'ipopt':
+            info = self.__solver.stats()['solver_stats'] # IPOPT as QP solver
+            t_wall_total = info['t_wall_total']
+
         self.__stats = {
             'x': w0,
             'lam_g': lam_g0,
             'p0': p0,
             'iter_count': iter,
             'f': self.__f_fun(w0,p0),
-            't_wall_total': info['t_wall_solver'],
+            't_wall_total': t_wall_total,
             'return_status': info['return_status'],
             'nAC': nAC,
             'nAS': len(as_idx)
@@ -231,11 +271,19 @@ class Sqp(object):
         lam_g0 = copy.deepcopy(lam_g0)
 
         # filter multipliers with treshold value
-        for i in range(lam_g0.shape[0]):
-            if abs(lam_g0[i]) < self.__options['lam_tresh']:
-                lam_g0[i] = 0.0
-        
-        return lam_g0
+        # for i in range(lam_g0.shape[0]):
+        #     if abs(lam_g0[i]) < self.__options['lam_tresh']:
+        #         lam_g0[i] = 0.0
+        if 'h' in list(lam_g0.keys()):
+            for i in range(len(lam_g0['h',:])):
+                for j in range(lam_g0['h',0].shape[0]):
+                    if abs(lam_g0['h',i,j]) < self.__options['lam_tresh']:
+                        lam_g0['h',i,j] = 0.0
+            # for j in range(lam_g0['g',0].shape[0]):
+            #     if abs(lam_g0['g',i,j]) < self.__options['lam_tresh']:
+            #         lam_g0['g',i,j] = 0.0
+         
+        return lam_g0.cat
 
     def __check_convergence(self, w0, p0, lam_g0, dw, k):
 
@@ -258,14 +306,14 @@ class Sqp(object):
             self.__ls_filter = np.array([[ f0, infeas ]])
             self.__alpha = 0.0
             self.__reg = 0.0
-            _, self.__as_idx_init = self.__active_constraints_jacobian(w0,p0,lam_g0)
+            _, self.__as_idx_init = self.__active_constraints_jacobian(w0,p0,lam_g0, ineq = True)
 
         # print stats
         if k%10 == 0:
             Logger.logger.debug('iter\tf\t\tstep\t\tinf_du\t\tinf_pr\t\talpha\t\treg')
         Logger.logger.debug('{:3d}\t{:.4e}\t{:.4e}\t{:.4e}\t{:.4e}\t{:.2e}\t{:.2e}'.format(
             k,
-            self.__ls_filter[-1,0],
+            self.__ls_filter[-1,0].full()[0][0],
             np.linalg.norm(dw),
             dual_infeas,
             self.__ls_filter[-1,1],
@@ -320,7 +368,7 @@ class Sqp(object):
                 break
 
         self.__alpha = alpha
-        self.__ls_filter = np.append( self.__ls_filter, np.array([[ f0, infeas ]]), axis=0 )
+        self.__ls_filter = np.append( self.__ls_filter, np.array([[ f0, infeas ]]), axis=0)
 
         return alpha*dw
 
@@ -335,7 +383,7 @@ class Sqp(object):
         if self.__options['regularization']  == 'reduced':
 
             # active constraints jacobian
-            jacg_active, _ = self.__active_constraints_jacobian(w0,p0,lam_g)
+            jacg_active, _ = self.__active_constraints_jacobian(w0,p0,lam_g, ineq = False)
 
             # compute reduced hessian
             Z   = null_space(jacg_active)
@@ -397,12 +445,18 @@ class Sqp(object):
             # make sure that the Hessian is symmetric
             H = (H.real + H.real.T)/2.0
 
+            eva_r, evec = eig(H)
+            for e in eva_r:
+                if e < tol/1e2:
+                    print('Regularization of full Hessian failed. Eigenvalue: {}'.format(e))
+
+
         else:
             self.__reg = 0.0
 
         return H
 
-    def __active_constraints_jacobian(self, w0, p0, lam_g):
+    def __active_constraints_jacobian(self, w0, p0, lam_g, ineq = False):
 
         # evaluate constraints jacobian
         jacg = self.__jacg_fun(w0,p0).full()
@@ -417,10 +471,11 @@ class Sqp(object):
         # inequality constraints
         ineq_idx = [i for i, e in enumerate(bounds) if e != 0]
         as_idx = []
-        for i in ineq_idx:
-            if lam_g[i] != 0:
-                jacg_active = np.append(jacg_active,[jacg[i,:]], axis = 0)
-                as_idx.append(i)
+        if ineq:
+            for i in ineq_idx:
+                if lam_g[i] != 0:
+                    jacg_active = np.append(jacg_active,[jacg[i,:]], axis = 0)
+                    as_idx.append(i)
 
         return jacg_active, as_idx
 
@@ -431,3 +486,7 @@ class Sqp(object):
     @property
     def stats(self):
         return self.__stats
+
+    @property
+    def H_fun(self):
+        return self.__H_fun

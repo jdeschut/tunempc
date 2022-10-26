@@ -35,7 +35,7 @@ from tunempc.logger import Logger
 
 class Pocp(object):
 
-    def __init__(self, sys, cost, period = 1):
+    def __init__(self, sys, cost, period = 1, solver_opts = {}):
 
         """ Constructor
         """
@@ -72,10 +72,10 @@ class Pocp(object):
         self.__parallelization = 'openmp'
         self.__mu_tresh = 1e-15 # treshold for active constraint detection
         self.__reg_slack = 1e-4 # slack regularization
-        self.__construct_solver()
+        self.__construct_solver(solver_opts)
         self.__construct_sensitivity_funcs()
 
-    def __construct_solver(self):
+    def __construct_solver(self, solver_opts):
 
         """ Construct periodic NLP and solver.
         """
@@ -169,6 +169,9 @@ class Pocp(object):
             cost_map_fun = self.__cost.map(self.__N,self.__parallelization)
             f = ca.sum2(cost_map_fun(map_args['x0'], map_args['p']))
 
+        if 'g' in self.g.keys():
+            f += 1e-8*sum([ca.mtimes(self.g['g',k].T, self.g['g',k]) for k in range(self.__N)])
+
         # add phase fixing cost
         self.__construct_phase_fixing_cost()
         alpha = ca.MX.sym('alpha')
@@ -183,26 +186,32 @@ class Pocp(object):
         p = ca.vertcat(alpha, x0star)
         self.__w = w
         self.__g_fun = ca.Function('g_fun',[w,p],[self.__g])
+        self.__jac_g_fun = ca.Function('g_fun',[w,p],[ca.jacobian(self.__g,w.cat)])
 
         # create IP-solver
         prob = {'f': f, 'g': self.__g, 'x': w, 'p': p}
-        opts = {'ipopt':{'linear_solver':'ma57'},'expand':False}
+        opts = {'ipopt':{'linear_solver':'mumps'},'expand':False}
+        solver_opts['sqp_opts'] = {'qpsolver': 'qpoases'}
+        for key, value in solver_opts.items():
+            if key == 'ipopt':
+                for ip_key, ip_value in solver_opts[key].items():
+                    opts[key][ip_key] = ip_value
+            elif key != 'sqp_opts':
+                opts[key] = value
         if Logger.logger.getEffectiveLevel() > 10:
             opts['ipopt']['print_level'] = 0
             opts['print_time'] = 0
             opts['ipopt']['sb'] = 'yes'
-
         self.__solver = ca.nlpsol('solver', 'ipopt', prob, opts)
 
         # create SQP-solver
         prob['lbg'] = self.__lbg
         prob['ubg'] = self.__ubg
-        self.__sqp_solver = sqp_method.Sqp(prob)
-
+        self.__sqp_solver = sqp_method.Sqp(prob, solver_opts['sqp_opts'])
 
         return None
 
-    def solve(self, w0 = None):
+    def solve(self, w0 = None, lam_g0 = None):
 
         """
         Solve periodic OCP
@@ -211,52 +220,73 @@ class Pocp(object):
         # initialize
         if w0 is None:
             w0 = self.__w(0.0)
+        if lam_g0 is None:
+            lam_g0 = 0.0
         
         # no phase fix cost
-        self.__alpha = 0.0
-        self.__x0star = np.zeros((self.__nx,1))
+        # self.__alpha = 0.0
+        # self.__x0star = np.zeros((self.__nx,1))
+        self.__alpha = 10
+        self.__x0star = self.__w(w0)['x',0]
         p = ca.vertcat(
                 self.__alpha,
                 self.__x0star
             )
 
         # solve OCP
-        Logger.logger.info('IPOPT pre-solve...')
-        self.__sol = self.__solver(
-            x0  = w0, 
-            lbx = self.__lbw, 
-            ubx = self.__ubw, 
-            lbg = self.__lbg, 
-            ubg = self.__ubg,
-            p   = p
-           )
+        self.__ipopt_presolve = True
+        if self.__ipopt_presolve:
 
-        # fix phase
-        if self.__N > 1:
-            # prepare
-            wsol = self.__w(self.__sol['x'])
-            self.__alpha = 0.1
-            self.__x0star = wsol['x',0]
-            p = ca.vertcat(
-                    self.__alpha,
-                    self.__x0star
-                )
-            # solve
-            Logger.logger.info('IPOPT pre-solve with phase-fix...')
+            Logger.logger.info('IPOPT pre-solve...')
             self.__sol = self.__solver(
-                x0  = self.__sol['x'],
+                x0  = w0, 
                 lbx = self.__lbw,
                 ubx = self.__ubw,
                 lbg = self.__lbg,
                 ubg = self.__ubg,
-                p   = p
-           )
+                p   = p,
+                lam_g0 = lam_g0
+            )
+            wsol = self.__w(self.__sol['x'])
+            lam_gsol = self.__g(self.__sol['lam_g'])
+        else:
+            wsol = self.__w(w0)
+            lam_gsol = self.__g(lam_g0)
+
+        # # fix phase
+        # if self.__N > 1:
+
+        #     self.__alpha = 0.1
+        #     self.__x0star = wsol['x',0]
+        #     p = ca.vertcat(
+        #             self.__alpha,
+        #             self.__x0star
+        #         )
+        #     if self.__ipopt_presolve:
+        #         # solve
+        #         Logger.logger.info('IPOPT pre-solve with phase-fix...')
+        #         self.__sol = self.__solver(
+        #             x0  = self.__sol['x'],
+        #             lbx = self.__lbw,
+        #             ubx = self.__ubw,
+        #             lbg = self.__lbg,
+        #             ubg = self.__ubg,
+        #             p   = p,
+        #             lam_g0 = lam_gsol
+        #         )
+        #         wsol = self.__w(self.__sol['x'])
+        #         lam_gsol = self.__g(self.__sol['lam_g'])
 
         # solve with SQP (with active set QP solver) to retrieve active set
         Logger.logger.info('Solve with active-set based SQP method...')
-        self.__sol = self.__sqp_solver.solve(self.__sol['x'], p, self.__sol['lam_g'])
 
-        return self.__w(self.__sol['x'])
+        self.__sol = self.__sqp_solver.solve(wsol.cat, p, lam_gsol)
+        self.Hred_eigvals = [
+            self.__sqp_solver.Hred_min_eigval,
+            self.__sqp_solver.Hred_max_eigval,
+            ]
+
+        return self.__w(self.__sol['x']), self.__g(self.__sol['lam_g'])
 
     def get_sensitivities(self):
 
@@ -474,3 +504,8 @@ class Pocp(object):
     def g_fun(self):
         "Constraints function"
         return self.__g_fun
+
+    @property
+    def solver(self):
+        "IPOPT solver"
+        return self.__solver

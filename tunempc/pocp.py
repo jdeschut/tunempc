@@ -170,10 +170,7 @@ class Pocp(object):
             f = ca.sum2(cost_map_fun(map_args['x0'], map_args['p']))
 
         if 'g' in self.g.keys():
-            f += 1e0*sum([ca.mtimes(self.g['g',k].T, self.g['g',k]) for k in range(self.__N)])
-
-        if 'v' in w.keys():
-            f += 1e-8*ca.mtimes(w['v'].T, w['v'])
+            f += 1e-8*sum([ca.mtimes(self.g['g',k].T, self.g['g',k]) for k in range(self.__N)])
 
         # add phase fixing cost
         self.__construct_phase_fixing_cost()

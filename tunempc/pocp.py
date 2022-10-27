@@ -211,11 +211,6 @@ class Pocp(object):
             opts['ipopt']['sb'] = 'yes'
         self.__solver = ca.nlpsol('solver', 'ipopt', prob, opts)
 
-        # create SQP-solver
-        prob['lbg'] = self.__lbg
-        prob['ubg'] = self.__ubg
-        self.__sqp_solver = sqp_method.Sqp(prob, solver_opts['sqp_opts'])
-
         return None
 
     def solve(self, w0 = None, lam_g0 = None):
@@ -287,9 +282,8 @@ class Pocp(object):
         #         lam_gsol = self.__g(self.__sol['lam_g'])
 
         # solve with SQP (with active set QP solver) to retrieve active set
-        Logger.logger.info('Solve with active-set based SQP method...')
-        import ipdb; ipdb.set_trace()
-        self.__sol = self.__sqp_solver.solve(wsol.cat, p, lam_gsol)
+        #Logger.logger.info('Solve with active-set based SQP method...')
+        #self.__sol = self.__sqp_solver.solve(wsol.cat, p, lam_gsol)
 
         return self.__w(self.__sol['x']), self.__g(self.__sol['lam_g'])
 

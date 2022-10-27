@@ -77,7 +77,6 @@ class Tuner(object):
         else:
             Logger.logger.info('Construct {}-periodic optimal control problem...'.format(self.__p))
 
-
         self.__l = l
         self.__ocp = pocp.Pocp(
             sys = sys,
@@ -127,8 +126,8 @@ class Tuner(object):
         Logger.logger.info('')
 
         self.__w_sol, self.__lam_g = self.__ocp.solve(w0=w_init, lam_g0 = lam0)
-        self.__S     = self.__ocp.get_sensitivities()
-        self.__sys['S'] = self.__S
+        # self.__S     = self.__ocp.get_sensitivities()
+        # self.__sys['S'] = self.__S
 
         Logger.logger.info('')
         Logger.logger.info('Optimization problem solved.')

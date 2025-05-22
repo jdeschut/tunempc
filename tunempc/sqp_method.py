@@ -255,7 +255,7 @@ class Sqp(object):
                     np.array([*map(max,np.array(g0) - ubg,self.__gzeros)])),
                     np.inf)
 
-            self.__ls_filter = np.array([[ f0, infeas ]])
+            self.__ls_filter = np.array([[ f0.full().squeeze(), infeas.squeeze() ]])
             self.__alpha = 0.0
             self.__reg = 0.0
             _, self.__as_idx_init = self.__active_constraints_jacobian(w0,p0,lam_g0)
@@ -263,6 +263,10 @@ class Sqp(object):
         # print stats
         if k%10 == 0:
             Logger.logger.debug('iter\tf\t\tstep\t\tinf_du\t\tinf_pr\t\talpha\t\treg')
+
+        ls_filter = self.__ls_filter
+        alpha = self.__alpha
+        reg = self.__reg
         Logger.logger.debug('{:3d}\t{:.4e}\t{:.4e}\t{:.4e}\t{:.4e}\t{:.2e}\t{:.2e}'.format(
             k,
             self.__ls_filter[-1,0],
@@ -320,7 +324,7 @@ class Sqp(object):
                 break
 
         self.__alpha = alpha
-        self.__ls_filter = np.append( self.__ls_filter, np.array([[ f0, infeas ]]), axis=0 )
+        self.__ls_filter = np.append( self.__ls_filter, np.array([[ f0.full().squeeze(), infeas.squeeze() ]]), axis=0 )
 
         return alpha*dw
 

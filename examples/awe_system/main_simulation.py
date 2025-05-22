@@ -99,6 +99,7 @@ ctrls = {}
 
 # # economic MPC
 tuning = {'H': sol['S']['Hc'], 'q': sol['S']['q']}
+opts['hessian_approximation'] = 'gauss_newton'
 ctrls['EMPC'] = pmpc.Pmpc(
     N = Nmpc,
     sys = mpc_sys,
@@ -106,6 +107,7 @@ ctrls['EMPC'] = pmpc.Pmpc(
     wref = sol['wsol'],
     lam_g_ref = sol['lam_g'],
     sensitivities= sol['S'],
+    tuning = tuning,
     options = opts
 )
 
@@ -178,6 +180,8 @@ if ACADOS_SIM:
         if ctrl_key == 'EMPC':
             opts['hessian_approx'] = 'GAUSS_NEWTON'
             opts['qp_solver'] = 'PARTIAL_CONDENSING_HPIPM'
+            opts['ext_cost_custom_hessian'] = False
+            opts['custom_hessian'] = sol['S']['Hc']
         else:
             opts['hessian_approx'] = 'GAUSS_NEWTON'
             opts['qp_solver'] = 'PARTIAL_CONDENSING_HPIPM' # faster than full condensing

@@ -98,14 +98,11 @@ class Pmpc(object):
 
             # cost function of the form: l(x,u)
             self.__type = 'economic'
-            
-            # no tuning required
-            tuning = None 
 
             if self.__options['hessian_approximation'] == 'gauss_newton':
-                self.__options['hessian_approximation'] = 'exact'
-                Logger.logger.warning('Gauss-Newton Hessian approximation cannot be applied for economic MPC problem. Switched to exact Hessian.')
-
+                assert tuning != None, 'Provide tuning matrices for GN EMPC!'
+            else:
+                tuning = None
         else:
 
             # cost function of the form: (w-wref)'*H*(w-wref) + q'w
@@ -172,15 +169,30 @@ class Pmpc(object):
 
         if self.__type == 'economic':
 
-            # parameters
-            self.__p = ct.struct_symMX([
-                ct.entry('x0', shape = (self.__nx,1)),
-                ct.entry('xN', shape = (self.__nx,1))
-            ])
+            if self.__options['hessian_approximation'] == 'exact':
+                # parameters
+                self.__p = ct.struct_symMX([
+                    ct.entry('x0', shape = (self.__nx,1)),
+                    ct.entry('xN', shape = (self.__nx,1))
+                ])
+            else:
+
+                nw = self.__nx + self.__nu + self.__ns
+                tuning = ct.struct_symMX([ # hessian approximation
+                    ct.entry('H', shape = (nw, nw), repeat = self.__N)
+                ])
+
+                # parameters
+                self.__p = ct.struct_symMX([
+                    ct.entry('x0', shape = (self.__nx,1)),
+                    ct.entry('xN', shape = (self.__nx,1)),
+                    ct.entry('tuning', struct = tuning),
+                ])
 
             # reassign for brevity
             x0 = self.__p['x0']
             xN = self.__p['xN']
+            tuning = self.__p.prefix['tuning']
 
         if self.__type == 'tracking':
             ref_vars = (
@@ -324,13 +336,13 @@ class Pmpc(object):
                 ct.horzcat(*tuning['q'])
             ]
 
-            if self.__options['hessian_approximation'] == 'gauss_newton':
+        if self.__options['hessian_approximation'] == 'gauss_newton':
 
-                if 'usc' not in self.__vars:
-                    hess_gn = ct.diagcat(*tuning['H'], ca.DM.zeros(self.__nx, self.__nx))
-                else:
-                    hess_block = list(itertools.chain.from_iterable(zip(tuning['H'],[ca.DM.zeros(self.__nsc, self.__nsc)]*self.__N)))
-                    hess_gn = ct.diagcat(*hess_block, ca.DM.zeros(self.__nx, self.__nx))
+            if 'usc' not in self.__vars:
+                hess_gn = ct.diagcat(*tuning['H'], ca.DM.zeros(self.__nx, self.__nx))
+            else:
+                hess_block = list(itertools.chain.from_iterable(zip(tuning['H'],[ca.DM.zeros(self.__nsc, self.__nsc)]*self.__N)))
+                hess_gn = ct.diagcat(*hess_block, ca.DM.zeros(self.__nx, self.__nx))
 
         J = ca.sum2(cost_map(*cost_args))
 
@@ -383,6 +395,9 @@ class Pmpc(object):
         if self.__type == 'economic':
 
             p0['xN'] = self.__ref[self.__index][-x0.shape[0]:]
+
+            if self.__options['hessian_approximation'] == 'gauss_newton':
+                p0['tuning', 'H'] = self.__Href[self.__index]
 
         elif self.__type == 'tracking':
 

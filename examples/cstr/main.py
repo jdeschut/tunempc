@@ -155,23 +155,23 @@ for name in ctrl_list:
     plt.figure(fig_num)
     for i in range(nu):
         plt.subplot(nu,1,i+1)
-        plt.step(tgrid, [logg['u'][name][j][i] for j in range(len(tgrid))], where='post', linestyle = ls)
+        plt.step(tgrid, [logg['u'][name][j][i].full()[0,0] for j in range(len(tgrid))], where='post', linestyle = ls)
         plt.grid(True)
         plt.autoscale(enable=True, axis='x', tight=True)
 
     # plot stage cost deviation
     plt.figure(fig_num +1)
-    stage_cost_dev = [x[0] - x[1] for x in zip(logg['l'][name],N*[lOpt])]
+    stage_cost_dev = [x[0] - x[1] for x in zip(logg['l'][name], N*[lOpt.full()[0,0]])]
     plt.step(tgrid, stage_cost_dev, where='post', linestyle = ls)
 
     # plot state prediction
     plt.figure(fig_num +2)
     for i in range(nx):
         plt.subplot(nx,1,i+1)
-        plt.plot(tgridx, [logg['x'][name][j][i] for j in range(len(tgridx))], linestyle = ls)
+        plt.plot(tgridx, [logg['x'][name][j][i].full()[0,0] for j in range(len(tgridx))], linestyle = ls)
         plt.plot(
             tgridx,
-            [wsol['x',0][i] for j in range(len(tgridx))],
+            [wsol['x',0][i].full()[0,0] for j in range(len(tgridx))],
             linestyle='--',
             color='black',
             label='_nolegend_')
@@ -219,7 +219,7 @@ for name in ctrl_list:
     transient_cost[name] = []
     for i in range(len(alpha)):
             transient_cost[name].append(
-                sum([x[0] - x[1] for x in zip(logg[i]['l'][name],N*[lOpt])])
+                sum([x[0] - x[1] for x in zip(logg[i]['l'][name],N*[lOpt])]).full()[0,0]
                 )
     plt.plot(alpha, transient_cost[name], marker = 'o', linestyle = ls)
 

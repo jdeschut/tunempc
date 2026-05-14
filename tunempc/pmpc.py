@@ -209,8 +209,8 @@ class Pmpc(object):
 
             # reassign for brevity
             x0     = self.__p['x0']
-            wref   = self.__p.prefix['wref']
-            tuning = self.__p.prefix['tuning']
+            wref   = self.__p['wref']
+            tuning = self.__p['tuning']
             xN     = wref['x',-1]
 
         # NLP variables
@@ -404,7 +404,7 @@ class Pmpc(object):
             self.__lam_g0 = self.__g(ipopt_sol['lam_g'])
 
         # solve NLP
-        sol = self.__sqp_solver.solve(self.__w0.cat, p0.cat, self.__lam_g0.cat)
+        sol = self.__sqp_solver.solve(self.__w0.master, p0.master, self.__lam_g0.master)
 
         # store solution
         self.__g_sol = self.__g(self.__g_fun(sol['x'], p0))
@@ -767,7 +767,7 @@ class Pmpc(object):
                         lamgk['init'] += -delta_lam
 
             ref_pr.append(ct.vertcat(*refk))
-            ref_du.append(lamgk.cat)
+            ref_du.append(lamgk.master)
             ref_du_struct.append(lamgk)
 
             if tuning is not None:

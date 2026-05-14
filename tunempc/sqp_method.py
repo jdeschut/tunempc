@@ -248,8 +248,8 @@ class Sqp(object):
         if k == 0:
             f0 = self.__f_fun(w0,p0)
             g0 = self.__g_fun(w0,p0)
-            lbg = self.__lbg.cat.full()
-            ubg = self.__ubg.cat.full()
+            lbg = self.__lbg.master.full()
+            ubg = self.__ubg.master.full()
             infeas = np.linalg.norm(
                 abs(np.array([*map(min,np.array(g0) - lbg,self.__gzeros)]) +
                     np.array([*map(max,np.array(g0) - ubg,self.__gzeros)])),
@@ -294,8 +294,8 @@ class Sqp(object):
         # filter method
         f0 = self.__f_fun(wnew,p0)
         g0 = self.__g_fun(wnew,p0)
-        lbg = self.__lbg.cat.full()
-        ubg = self.__ubg.cat.full()
+        lbg = self.__lbg.master.full()
+        ubg = self.__ubg.master.full()
         infeas = np.linalg.norm(
             abs(np.array([*map(min,np.array(g0) - lbg,self.__gzeros)]) +
                 np.array([*map(max,np.array(g0) - ubg,self.__gzeros)])),
@@ -408,7 +408,7 @@ class Sqp(object):
         jacg = self.__jacg_fun(w0,p0).full()
 
         # constraint bounds
-        bounds = (self.__ubg.cat - self.__lbg.cat).full()
+        bounds = (self.__ubg.master - self.__lbg.master).full()
 
         # equality constraints
         eq_idx = [i for i, e in enumerate(bounds) if e == 0]

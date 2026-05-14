@@ -209,9 +209,7 @@ class Pmpc(object):
 
             # reassign for brevity
             x0     = self.__p['x0']
-            wref   = self.__p['wref']
-            tuning = self.__p['tuning']
-            xN     = wref['x',-1]
+            xN     = self.__p['wref', 'x', -1]
 
         # NLP variables
         variables_entry = (
@@ -307,29 +305,29 @@ class Pmpc(object):
                     *[ct.vertcat(w['x',k], w['u',k],w['us',k]) for k in range(self.__N)]
                     )
                 cost_args_w_ref = ct.horzcat(
-                    *[ct.vertcat(wref['x',k], wref['u',k], wref['us',k]) for k in range(self.__N)]
+                    *[ct.vertcat(self.__p['wref','x',k], self.__p['wref','u',k], self.__p['wref','us',k]) for k in range(self.__N)]
                     )
             else:
                 cost_args_w = ct.horzcat(
                     *[ct.vertcat(w['x',k], w['u',k]) for k in range(self.__N)]
                     )
                 cost_args_w_ref = ct.horzcat(
-                    *[ct.vertcat(wref['x',k], wref['u',k]) for k in range(self.__N)]
+                    *[ct.vertcat(self.__p['wref','x',k], self.__p['wref','u',k]) for k in range(self.__N)]
                     )
 
             cost_args = [
                 cost_args_w,
                 cost_args_w_ref,
-                ct.horzcat(*tuning['H']),
-                ct.horzcat(*tuning['q'])
+                ct.horzcat(*self.__p['tuning','H']),
+                ct.horzcat(*self.__p['tuning','q'])
             ]
 
             if self.__options['hessian_approximation'] == 'gauss_newton':
 
                 if 'usc' not in self.__vars:
-                    hess_gn = ct.diagcat(*tuning['H'], ca.DM.zeros(self.__nx, self.__nx))
+                    hess_gn = ct.diagcat(*self.__p['tuning','H'], ca.DM.zeros(self.__nx, self.__nx))
                 else:
-                    hess_block = list(itertools.chain.from_iterable(zip(tuning['H'],[ca.DM.zeros(self.__nsc, self.__nsc)]*self.__N)))
+                    hess_block = list(itertools.chain.from_iterable(zip(self.__p['tuning','H'],[ca.DM.zeros(self.__nsc, self.__nsc)]*self.__N)))
                     hess_gn = ct.diagcat(*hess_block, ca.DM.zeros(self.__nx, self.__nx))
 
         J = ca.sum2(cost_map(*cost_args))

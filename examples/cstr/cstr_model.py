@@ -21,7 +21,7 @@
 #
 #!/usr/bin/python3
 """System dynamics, constraints and objective of CSTR benchmarking example found in
-Chen, H., Stability and Robustness Considerations in Nonlinear Model Predictive Control, 1997. 
+Chen, H., Stability and Robustness Considerations in Nonlinear Model Predictive Control, 1997.
 
 :author: Jochem De Schutter
 
@@ -83,7 +83,7 @@ def dynamics(x, u, data):
         u['Vdot']*(data['cA0'] - x['cA']) - arrhenius(x,u,data,1)*x['cA'] - arrhenius(x,u,data,3)*x['cA']*x['cA'],
         -u['Vdot']*x['cB'] + arrhenius(x,u,data,1)*x['cA'] - arrhenius(x,u,data,2)*x['cB'],
         u['Vdot']*(data['theta0']-x['theta']) - 1.0/(data['rho']*data['Cp'])*(
-            arrhenius(x,u,data,1)*x['cA']*data['DH_AB'] + 
+            arrhenius(x,u,data,1)*x['cA']*data['DH_AB'] +
             arrhenius(x,u,data,2)*x['cB']*data['DH_BC'] +
             arrhenius(x,u,data,3)*x['cA']*x['cA']*data['DH_AD']
         ) + data['kw']*data['AR']/(data['rho']*data['Cp']*data['VR'])*(x['thetaK']- x['theta']),
@@ -112,7 +112,7 @@ def objective(x, u, data):
 
     """ Economic objective function
     """
-    
+
     # cost definition
     e_obj = - x['cB']/data['cA0']
 
@@ -147,7 +147,7 @@ def tracking_cost(nw):
     return ca.Function('tracking_cost',[w, wref, H, q],[obj])
 
 def constraints(x, u, data):
-    
+
     """ Path inequality constraints function (convention h(x,u) >= 0)
     """
 

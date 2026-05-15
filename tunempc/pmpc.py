@@ -37,16 +37,16 @@ from tunempc.logger import Logger
 class Pmpc(object):
 
     def __init__(self, N, sys, cost, wref = None, tuning = None, lam_g_ref = None, sensitivities = None, options = {}):
-        
+
         """ Constructor
         """
-        
+
         # store construction data
         self.__N    = N
         self.__vars = sys['vars']
         self.__nx   = sys['vars']['x'].shape[0]
         self.__nu   = sys['vars']['u'].shape[0]
-        
+
         # nonlinear inequalities slacks
         if 'us' in sys['vars']:
             self.__ns = sys['vars']['us'].shape[0]
@@ -98,9 +98,9 @@ class Pmpc(object):
 
             # cost function of the form: l(x,u)
             self.__type = 'economic'
-            
+
             # no tuning required
-            tuning = None 
+            tuning = None
 
             if self.__options['hessian_approximation'] == 'gauss_newton':
                 self.__options['hessian_approximation'] = 'exact'
@@ -187,7 +187,7 @@ class Pmpc(object):
                     ct.entry('x', shape = (self.__nx,), repeat = self.__N+1),
                     ct.entry('u', shape = (self.__nu,), repeat = self.__N)
                 )
-            
+
             if 'us' in self.__vars:
                 ref_vars += (ct.entry('us', shape = (self.__ns,), repeat = self.__N),)
 
@@ -209,16 +209,14 @@ class Pmpc(object):
 
             # reassign for brevity
             x0     = self.__p['x0']
-            wref   = self.__p.prefix['wref']
-            tuning = self.__p.prefix['tuning']
-            xN     = wref['x',-1]
+            xN     = self.__p['wref', 'x', -1]
 
         # NLP variables
         variables_entry = (
                 ct.entry('x', shape = (self.__nx,), repeat = self.__N+1),
                 ct.entry('u', shape = (self.__nu,), repeat = self.__N)
             )
-        
+
         if 'us' in self.__vars:
             variables_entry += (
                 ct.entry('us', shape = (self.__ns,), repeat = self.__N),
@@ -307,29 +305,29 @@ class Pmpc(object):
                     *[ct.vertcat(w['x',k], w['u',k],w['us',k]) for k in range(self.__N)]
                     )
                 cost_args_w_ref = ct.horzcat(
-                    *[ct.vertcat(wref['x',k], wref['u',k], wref['us',k]) for k in range(self.__N)]
+                    *[ct.vertcat(self.__p['wref','x',k], self.__p['wref','u',k], self.__p['wref','us',k]) for k in range(self.__N)]
                     )
             else:
                 cost_args_w = ct.horzcat(
                     *[ct.vertcat(w['x',k], w['u',k]) for k in range(self.__N)]
                     )
                 cost_args_w_ref = ct.horzcat(
-                    *[ct.vertcat(wref['x',k], wref['u',k]) for k in range(self.__N)]
+                    *[ct.vertcat(self.__p['wref','x',k], self.__p['wref','u',k]) for k in range(self.__N)]
                     )
 
             cost_args = [
                 cost_args_w,
                 cost_args_w_ref,
-                ct.horzcat(*tuning['H']),
-                ct.horzcat(*tuning['q'])
+                ct.horzcat(*self.__p['tuning','H']),
+                ct.horzcat(*self.__p['tuning','q'])
             ]
 
             if self.__options['hessian_approximation'] == 'gauss_newton':
 
                 if 'usc' not in self.__vars:
-                    hess_gn = ct.diagcat(*tuning['H'], ca.DM.zeros(self.__nx, self.__nx))
+                    hess_gn = ct.diagcat(*self.__p['tuning','H'], ca.DM.zeros(self.__nx, self.__nx))
                 else:
-                    hess_block = list(itertools.chain.from_iterable(zip(tuning['H'],[ca.DM.zeros(self.__nsc, self.__nsc)]*self.__N)))
+                    hess_block = list(itertools.chain.from_iterable(zip(self.__p['tuning','H'],[ca.DM.zeros(self.__nsc, self.__nsc)]*self.__N)))
                     hess_gn = ct.diagcat(*hess_block, ca.DM.zeros(self.__nx, self.__nx))
 
         J = ca.sum2(cost_map(*cost_args))
@@ -404,7 +402,7 @@ class Pmpc(object):
             self.__lam_g0 = self.__g(ipopt_sol['lam_g'])
 
         # solve NLP
-        sol = self.__sqp_solver.solve(self.__w0.cat, p0.cat, self.__lam_g0.cat)
+        sol = self.__sqp_solver.solve(self.__w0.master, p0.master, self.__lam_g0.master)
 
         # store solution
         self.__g_sol = self.__g(self.__g_fun(sol['x'], p0))
@@ -480,7 +478,7 @@ class Pmpc(object):
 
         # extract dimensions
         nx = self.__nx
-        nu = self.__nu + self.__ns# treat slacks as pseudo-controls 
+        nu = self.__nu + self.__ns# treat slacks as pseudo-controls
 
         # extract reference
         ref = self.__ref
@@ -532,7 +530,7 @@ class Pmpc(object):
 
                 elif n_in == 4:
 
-                    # f(xdot, x, u, z) = 0 
+                    # f(xdot, x, u, z) = 0
                     nz = dae.size1_in(3)
                     z = ca.MX.sym('z', nz)
                     model.z = z
@@ -574,10 +572,10 @@ class Pmpc(object):
             with open(model.name + '_gnsf_functions.json', 'r') as f:
                 import json
                 gnsf_dict = json.load(f)
-            ocp.gnsf_model = gnsf_dict
+            ocp.model.gnsf_model = gnsf_dict
 
         # set horizon length
-        ocp.dims.N = self.__N
+        ocp.solver_options.N_horizon = self.__N
 
         # set cost module
         if self.__type == 'economic':
@@ -628,7 +626,7 @@ class Pmpc(object):
             ocp.constraints.ug = np.squeeze(ug, axis = 1)
             ocp.constraints.C  = C
             ocp.constraints.D  = D
-            
+
             if 'usc' in self.__vars:
                 if 'us' in self.__vars:
                     arg = [self.__vars['x'],self.__vars['u'], self.__vars['us'],self.__vars['usc']]
@@ -690,7 +688,7 @@ class Pmpc(object):
         q   = []
 
         for k in range(self.__Nref):
-            
+
             # reference primal solution
             refk = []
             for j in range(self.__N):
@@ -702,7 +700,7 @@ class Pmpc(object):
 
                 if 'us' in self.__vars:
                     refk += [wref['us', (k+j)%self.__Nref]]
-            
+
             refk.append(wref['x', (k+self.__N)%self.__Nref])
 
             # reference dual solution
@@ -767,7 +765,7 @@ class Pmpc(object):
                         lamgk['init'] += -delta_lam
 
             ref_pr.append(ct.vertcat(*refk))
-            ref_du.append(lamgk.cat)
+            ref_du.append(lamgk.master)
             ref_du_struct.append(lamgk)
 
             if tuning is not None:
@@ -1085,7 +1083,7 @@ class Pmpc(object):
                 t.append(np.zeros((self.__nsc,))) # sug > 0
             if len(lam_h) != 0:
                 self.__acados_ocp_solver.set(i, "lam", np.squeeze(ct.vertcat(*lam_h).full()))
-                self.__acados_ocp_solver.set(i, "t", np.squeeze(ct.vertcat(*t).full()))
+                # self.__acados_ocp_solver.set(i, "t", np.squeeze(ct.vertcat(*t).full()))  # t vars are never used by acados sqp method hence they are not exposed anymore
 
         # terminal state
         idx = (self.__index_acados+self.__N)%self.__Nref

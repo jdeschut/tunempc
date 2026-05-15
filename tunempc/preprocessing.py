@@ -42,7 +42,7 @@ def input_formatting(sys):
     else:
         fsize = sys['f'] 
     nx = fsize.size1_in(0)
-    nu = fsize.size1_in(1)
+    nu = fsize.size1_in(2) # NOTE: ca.integrator:(x0,z0,p,u,adj_xf,adj_zf,adj_qf)
     sys['vars'] = collections.OrderedDict()
     sys['vars']['x'] = ca.MX.sym('x',nx)
     sys['vars']['u'] = ca.MX.sym('u',nu)

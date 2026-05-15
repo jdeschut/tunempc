@@ -248,14 +248,14 @@ class Sqp(object):
         if k == 0:
             f0 = self.__f_fun(w0,p0)
             g0 = self.__g_fun(w0,p0)
-            lbg = self.__lbg.cat.full()
-            ubg = self.__ubg.cat.full()
+            lbg = self.__lbg.master.full()
+            ubg = self.__ubg.master.full()
             infeas = np.linalg.norm(
                 abs(np.array([*map(min,np.array(g0) - lbg,self.__gzeros)]) +
                     np.array([*map(max,np.array(g0) - ubg,self.__gzeros)])),
                     np.inf)
 
-            self.__ls_filter = np.array([[ f0, infeas ]])
+            self.__ls_filter = np.array([[ f0.full()[0,0], infeas ]])
             self.__alpha = 0.0
             self.__reg = 0.0
             _, self.__as_idx_init = self.__active_constraints_jacobian(w0,p0,lam_g0)
@@ -294,8 +294,8 @@ class Sqp(object):
         # filter method
         f0 = self.__f_fun(wnew,p0)
         g0 = self.__g_fun(wnew,p0)
-        lbg = self.__lbg.cat.full()
-        ubg = self.__ubg.cat.full()
+        lbg = self.__lbg.master.full()
+        ubg = self.__ubg.master.full()
         infeas = np.linalg.norm(
             abs(np.array([*map(min,np.array(g0) - lbg,self.__gzeros)]) +
                 np.array([*map(max,np.array(g0) - ubg,self.__gzeros)])),
@@ -320,7 +320,7 @@ class Sqp(object):
                 break
 
         self.__alpha = alpha
-        self.__ls_filter = np.append( self.__ls_filter, np.array([[ f0, infeas ]]), axis=0 )
+        self.__ls_filter = np.concatenate( (self.__ls_filter, np.array([[ f0.full()[0,0], infeas ]])), axis=0 )
 
         return alpha*dw
 
@@ -408,7 +408,7 @@ class Sqp(object):
         jacg = self.__jacg_fun(w0,p0).full()
 
         # constraint bounds
-        bounds = (self.__ubg.cat - self.__lbg.cat).full()
+        bounds = (self.__ubg.master - self.__lbg.master).full()
 
         # equality constraints
         eq_idx = [i for i, e in enumerate(bounds) if e == 0]

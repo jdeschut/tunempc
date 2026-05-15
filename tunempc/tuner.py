@@ -40,7 +40,7 @@ class Tuner(object):
 
     def __init__(self, f, l, h = None, p = 1):
 
-        """ Constructor 
+        """ Constructor
         """
 
         # print license information
@@ -86,7 +86,7 @@ class Tuner(object):
         self.__log_problem_dimensions()
 
         return None
-    
+
     def solve_ocp(self, w0 = None, lam0 = None):
 
         """ Solve periodic optimal control problem.
@@ -167,7 +167,7 @@ class Tuner(object):
 
         if mpc_type not in ['economic','tuned','tracking']:
             raise ValueError('Provided MPC type not supported.')
-        
+
         if 'slack_flag' in opts.keys():
             mpc_sys = preprocessing.add_mpc_slacks(
                 copy.deepcopy(self.__sys),
@@ -179,7 +179,7 @@ class Tuner(object):
             mpc_sys = self.__sys
 
         if mpc_type == 'economic':
-            mpc = pmpc.Pmpc(N = N, sys = mpc_sys, cost = self.__l, wref = self.__w_sol, 
+            mpc = pmpc.Pmpc(N = N, sys = mpc_sys, cost = self.__l, wref = self.__w_sol,
                 lam_g_ref=self.__ocp.lam_g, sensitivities = self.__S, options=opts)
         else:
             cost = mtools.tracking_cost(self.__nx+self.__nu+self.__nus)
@@ -195,7 +195,7 @@ class Tuner(object):
                 tuning = {'H': self.__S['Hc'], 'q': self.__S['q']}
             mpc = pmpc.Pmpc(N = N, sys = mpc_sys, cost = cost, wref = self.__w_sol,
                 tuning = tuning, lam_g_ref=lam_g0, sensitivities = self.__S, options=opts)
-        
+
         return mpc
 
     def __log_license_info(self):

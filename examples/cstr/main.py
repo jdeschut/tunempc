@@ -91,7 +91,7 @@ ctrls['tracking'] = tuner.create_mpc('tracking', N, tuning=tuningTn)
 # tuned tracking mpc controller
 ctrls['tuned'] = tuner.create_mpc('tuned', N)
 
-ACADOS_CODEGENERATE = False
+ACADOS_CODEGENERATE = True
 if ACADOS_CODEGENERATE:
 
     # get system ode
@@ -111,8 +111,8 @@ if ACADOS_CODEGENERATE:
     for ctrl_key in list(ctrls.keys()):
         if ctrl_key == 'economic':
             opts['hessian_approx'] = 'EXACT'
-            opts['nlp_solver_step_length'] = 0.7
             opts['qp_solver'] = 'PARTIAL_CONDENSING_HPIPM'
+            opts['regularize_method'] = 'MIRROR'
         else:
             opts['hessian_approx'] = 'GAUSS_NEWTON'
             opts['qp_solver'] = 'FULL_CONDENSING_HPIPM'

@@ -572,10 +572,10 @@ class Pmpc(object):
             with open(model.name + '_gnsf_functions.json', 'r') as f:
                 import json
                 gnsf_dict = json.load(f)
-            ocp.gnsf_model = gnsf_dict
+            ocp.model.gnsf_model = gnsf_dict
 
         # set horizon length
-        ocp.dims.N = self.__N
+        ocp.solver_options.N_horizon = self.__N
 
         # set cost module
         if self.__type == 'economic':
@@ -1083,7 +1083,7 @@ class Pmpc(object):
                 t.append(np.zeros((self.__nsc,))) # sug > 0
             if len(lam_h) != 0:
                 self.__acados_ocp_solver.set(i, "lam", np.squeeze(ct.vertcat(*lam_h).full()))
-                self.__acados_ocp_solver.set(i, "t", np.squeeze(ct.vertcat(*t).full()))
+                # self.__acados_ocp_solver.set(i, "t", np.squeeze(ct.vertcat(*t).full()))  # t vars are never used by acados sqp method hence they are not exposed anymore
 
         # terminal state
         idx = (self.__index_acados+self.__N)%self.__Nref
